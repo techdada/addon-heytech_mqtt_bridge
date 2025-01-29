@@ -1,0 +1,15 @@
+{
+  "name": "Heytech MQTT Bridge",
+  "version": "1.0.0",
+  "slug": "heytech_mqtt_bridge",
+  "description": "Konvertiert MQTT Messages in ein proprietäres Protokoll",
+  "startup": "system",
+  "boot": "auto",
+  "map": [
+    "config:rw"
+  ],
+  "options": {},
+  "schema": {},
+  "host_network": true
+}
+
