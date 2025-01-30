@@ -2,5 +2,4 @@ addons:
   - slug: "heytech_mqtt_bridge"
     name: "Heytech MQTT Bridge"
     description: "Konvertiert MQTT Messages in ein proprietäres Protokoll"
-    url: "https://github.com/techdada/heytech_mqtt_bridge_addon"
     version: "1.0.0"
