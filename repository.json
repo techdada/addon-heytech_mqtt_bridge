@@ -1,6 +1,5 @@
 {
   "name": "Heytech MQTT Bridge Addon",
   "url": "https://github.com/techdada/heytech_mqtt_bridge_addon",
-  "maintainer": "Dech Dada techdata@github.com",
-  "source": "https://github.com/techdada/heytech_mqtt_bridge_addon"
+  "maintainer": "Dech Dada techdata@github.com"
 }
