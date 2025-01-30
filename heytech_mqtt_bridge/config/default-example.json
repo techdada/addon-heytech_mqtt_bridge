@@ -1,0 +1,16 @@
+{
+  "Heytech": {
+    "host": "192.168.12.34",
+    "port": 1002,
+    "pin": "1234"
+  },
+  "MQTT": {
+    "host": "broker.home.local",
+    "port": 8883,
+    "user": "hass.io",
+    "pass": "avocado",
+    "cafile": "meica.crt",
+    "control_topic_root": "cmd/shutters",
+    "state_topic_root": "state/shutters"
+  }
+}
