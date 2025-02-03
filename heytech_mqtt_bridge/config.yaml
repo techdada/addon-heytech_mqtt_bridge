@@ -13,6 +13,6 @@ boot: auto
 map:
   - type: homeassistant_config
     read_only: False
-    path: /config
+    path: config
 options:
   log_level: info
