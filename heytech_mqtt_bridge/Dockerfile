@@ -1,5 +1,5 @@
 #FROM docker.io/node:carbon
-FROM docker.io/node:alpine
+FROM node:alpine
 
 # Create app directory
 WORKDIR /usr/src/app
