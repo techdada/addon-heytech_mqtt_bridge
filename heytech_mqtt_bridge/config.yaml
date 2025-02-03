@@ -11,8 +11,6 @@ arch:
 startup: system
 boot: auto
 map:
-  - type: homeassistant_config
-    read_only: False
-    path: config
+  - config:rw
 options:
   log_level: info
