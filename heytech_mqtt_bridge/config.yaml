@@ -9,5 +9,3 @@ map:
   - config:rw
 options:
   log_level: info
-schema: 
-  host_network: true 
