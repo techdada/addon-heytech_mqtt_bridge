@@ -5,7 +5,8 @@ FROM docker.io/library/node:18-alpine
 #ENV LANG C.UTF-8
 #SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-#RUN apk add --no-cache \
+RUN apk add --no-cache \
+     jq
 #    nodejs \
 #    npm \
 #    git
