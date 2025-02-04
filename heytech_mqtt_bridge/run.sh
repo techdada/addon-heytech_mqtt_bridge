@@ -34,8 +34,5 @@ if [ ! -d "$NODE_CONFIG_DIR" ]; then
   exit 1
 fi
 
-# Gehe ins App-Verzeichnis
-cd /usr/src/app || exit 1
-
 # Wichtig: Starte npm korrekt als PID 1!
 exec npm start
