@@ -1,7 +1,7 @@
 ARG BUILD_FROM
 #FROM $BUILD_FROM
-#FROM docker.io/library/node:lts-bullseye-slim
-FROM ghcr.io/hassio-addons/debian-node:latest
+FROM docker.io/library/node:18-alpine
+#FROM ghcr.io/hassio-addons/debian-node:latest
 #ENV LANG C.UTF-8
 #SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
