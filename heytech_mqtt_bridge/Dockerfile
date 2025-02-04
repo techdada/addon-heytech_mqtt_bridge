@@ -26,4 +26,4 @@ COPY run.sh /usr/src/app/run.sh
 RUN chmod +x /usr/src/app/run.sh
 RUN ls -l /usr/src/app/
 
-ENTRYPOINT  ["/usr/src/app/run.sh"]
+CMD  ["/usr/src/app/run.sh"]
