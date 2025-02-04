@@ -2,7 +2,11 @@ const config = require('/config');
 const MqttHandler = require('./modules/MqttHandler.js');
 
 const Heytech = require('./modules/heytech.js')({
-    "config":config.get("Heytech")
+    "config":{
+        "host": process.env.heyhost,
+        "port": process.env.heyport,
+        "pin": process.env.heypin
+    }
 });
 
 
@@ -26,7 +30,15 @@ const Heytech = require('./modules/heytech.js')({
     }*/
 
 let mqttHandler = new MqttHandler({
-    "config": config.get("MQTT"),
+    "config": {
+        "host": process.env.mqtthost,
+        "port": process.env.mqttport,
+        "user": process.env.mqttuser,
+        "pass": process.env.mqttpass,
+        "cafile": process.env.cafile,
+        "control_topic_root": process.env.control_topic_root,
+        "state_topic_root": process.env.state_topic_root
+    },
     "handler": Heytech
 });
 
