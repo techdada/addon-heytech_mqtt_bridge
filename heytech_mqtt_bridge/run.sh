@@ -32,5 +32,5 @@ fi
 cd /usr/src/app
 
 # Start the Node.js application
-npm start
+exec npm start
 
