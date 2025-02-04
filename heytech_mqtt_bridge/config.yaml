@@ -23,7 +23,7 @@ options:
   mqttpass: "wereulf"
   cafile: "/config/ca.crt"
   control_topic_root: "control/heytech"
-  - state_topic_root: "sensors/heytech"
+  state_topic_root: "sensors/heytech"
 schema:
   heyhost: str(,32)
   heyport: int(1024,65535)
