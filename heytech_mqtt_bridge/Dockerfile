@@ -22,7 +22,7 @@ RUN npm install && npm audit fix
 COPY app/ ./
 
 # Copy run script
-COPY run.sh ./
-RUN chmod +x ./run.sh
+COPY run.sh /usr/src/app/run.sh
+RUN chmod +x /usr/src/app/run.sh
 
-ENTRYPOINT  ["./run.sh"]
+ENTRYPOINT  ["/usr/src/app/run.sh"]
