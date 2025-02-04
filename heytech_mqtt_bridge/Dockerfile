@@ -11,19 +11,18 @@ FROM docker.io/library/node:18-alpine
 #    git
 
 # Create app directory
-WORKDIR /usr/src/app
+#WORKDIR /usr/src/app
 
 # Install app dependencies
-COPY package*.json ./
+COPY package*.json /
 
 RUN npm install && npm audit fix
 
 # Bundle app source
-COPY app/ ./
+COPY app/ /
 
 # Copy run script
-COPY run.sh /usr/src/app/run.sh
-RUN chmod +x /usr/src/app/run.sh
-RUN ls -l /usr/src/app/
-
-CMD  ["/usr/src/app/run.sh"]
+COPY run.sh /
+RUN chmod +x /run.sh
+RUN ls -l /
+CMD  ["/run.sh"]
