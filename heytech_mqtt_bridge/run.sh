@@ -25,7 +25,7 @@ export NODE_CONFIG_DIR=/config
 
 # Ensure the config directory exists
 if [ ! -d "$NODE_CONFIG_DIR" ]; then
-  bashio::log.info "Error: Config directory $NODE_CONFIG_DIR not found!"
+  bashio::log.error "Error: Config directory $NODE_CONFIG_DIR not found!"
   exit 1
 fi
 
