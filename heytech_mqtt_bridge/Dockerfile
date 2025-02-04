@@ -1,14 +1,14 @@
 ARG BUILD_FROM
 #FROM $BUILD_FROM
-FROM ghcr.io/hassio-addons/alpine-node:latest
+FROM docker.io/library/node:lts-bullseye-slim
 
 ENV LANG C.UTF-8
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
-RUN apk add --no-cache \
-    nodejs \
-    npm \
-    git
+#RUN apk add --no-cache \
+#    nodejs \
+#    npm \
+#    git
 
 # Create app directory
 WORKDIR /usr/src/app
