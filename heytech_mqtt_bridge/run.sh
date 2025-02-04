@@ -1,31 +1,36 @@
-#!/usr/bin/with-contenv bashio
+#!/bin/bash
 set -e  # Beendet das Skript sofort bei Fehlern
 set +u
 
-export heyhost=$(bashio::config 'heyhost')
-bashio::log.info "Heytech host: ${heyhost}."
-export heyport=$(bashio::config 'heyport')
-bashio::log.info "Heytech port: ${heyport}."
-export heypin=$(bashio::config 'heypin')
-export mqtthost=$(bashio::config 'mqtthost')
-bashio::log.info "MQTT host: ${mqtthost}."
-export mqttport=$(bashio::config 'mqttport')
-bashio::log.info "MQTT port: ${mqttport}."
-export mqttuser=$(bashio::config 'mqttuser')
-bashio::log.info "MQTT user ${mqttuser}."
-export mqttpass=$(bashio::config 'mqttpass')
-export control_topic_root=$(bashio::config 'control_topic_root')
-bashio::log.info "Control topic: ${control_topic_root}."
-export state_topic_root=$(bashio::config 'state_topic_root')
-bashio::log.info "State topic: ${state_topic_root}."
-bashio::log.info "Starting Heytech MQTT Bridge..."
+# Funktion zum Laden von Home Assistant Add-On Konfigurationswerten
+get_config() {
+    jq -r ".$1" /data/options.json
+}
+
+export heyhost=$(get_config 'heyhost')
+echo "Heytech host: ${heyhost}."
+export heyport=$(get_config 'heyport')
+echo "Heytech port: ${heyport}."
+export heypin=$(get_config 'heypin')
+export mqtthost=$(get_config 'mqtthost')
+echo "MQTT host: ${mqtthost}."
+export mqttport=$(get_config 'mqttport')
+echo "MQTT port: ${mqttport}."
+export mqttuser=$(get_config 'mqttuser')
+echo "MQTT user: ${mqttuser}."
+export mqttpass=$(get_config 'mqttpass')
+export control_topic_root=$(get_config 'control_topic_root')
+echo "Control topic: ${control_topic_root}."
+export state_topic_root=$(get_config 'state_topic_root')
+echo "State topic: ${state_topic_root}."
+echo "Starting Heytech MQTT Bridge..."
 
 # Set the config directory for the Node.js application
 export NODE_CONFIG_DIR=/config
 
 # Ensure the config directory exists
 if [ ! -d "$NODE_CONFIG_DIR" ]; then
-  bashio::log.error "Error: Config directory $NODE_CONFIG_DIR not found!"
+  echo "Error: Config directory $NODE_CONFIG_DIR not found!" >&2
   exit 1
 fi
 
@@ -34,4 +39,3 @@ cd /usr/src/app || exit 1
 
 # Wichtig: Starte npm korrekt als PID 1!
 exec npm start
-
