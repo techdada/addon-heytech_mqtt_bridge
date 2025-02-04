@@ -9,7 +9,7 @@ arch:
   - armv7
   - i386
 startup: system
-init: false
+init: FALSE
 boot: auto
 map:
   - config:rw
@@ -25,14 +25,14 @@ options:
   control_topic_root: "control/heytech"
   state_topic_root: "sensors/heytech"
 schema:
-  heyhost: str(,32)
-  heyport: int(1024,65535)
-  heypin: int(0,9999)
-  mqtthost: str(,32)
-  mqttport: int(1024,65535)
-  mqttuser: str(,32)
+  heyhost: "str(,32)"
+  heyport: "int(1024,65535)"
+  heypin: "int(0,9999)"
+  mqtthost: "str(,32)"
+  mqttport: "int(1024,65535)"
+  mqttuser: "str(,32)"
   mqttpass: password
-  cafile: str(,64)
-  control_topic_root: str(,128)
-  state_topic_root: str(,128)
+  cafile: "str(,64)"
+  control_topic_root: "str(,128)"
+  state_topic_root: "str(,128)"
   
