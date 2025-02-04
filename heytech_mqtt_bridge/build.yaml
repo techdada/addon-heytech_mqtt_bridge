@@ -1,8 +1,0 @@
----
-build_from:
-  aarch64: node:alpine
-  amd64: node:alpine
-  armv7: node:alpine
-#codenotary:
-#  base_image: codenotary@frenck.dev
-#  signer: codenotary@frenck.dev
