@@ -14,25 +14,25 @@ boot: auto
 map:
   - config:rw
 options:
-  - heyhost: Heytech Host/IP:
-  - heyport: Heytech Port:
-  - heypin: Heytech PIN:
-  - mqtthost: MQTT Broker Host:
-  - mqttport: MQTT Broker Port:
-  - mqttuser: MQTT Username:
-  - mqttpass: MQTT password: 
-  - cafile: Path to CA file (default: /config/ca.crt):
-  - control_topic_root: Root of control topic:
-  - state_topic_root: Root if status topic:
+  heyhost: "heytech.local"
+  heyport: 3200
+  heypin: 1234
+  mqtthost: "mqtt.local"
+  mqttport: 8883
+  mqttuser: "ulf"
+  mqttpass: "wereulf"
+  cafile: "/config/ca.crt"
+  control_topic_root: "control/heytech"
+  - state_topic_root: "sensors/heytech"
 schema:
-  - heyhost: str
-  - heyport: int
-  - heypin: int
-  - mqtthost: str
-  - mqttport: int
-  - mqttuser: str
-  - mqttpass: str
-  - cafile: str
-  - control_topic_root: str
-  - state_topic_root: str
+  heyhost: str(,32)
+  heyport: int(1024,65535)
+  heypin: int(0,9999)
+  mqtthost: str(,32)
+  mqttport: int(1024,65535)
+  mqttuser: str(,32)
+  mqttpass: password
+  cafile: str(,64)
+  control_topic_root: str(,128)
+  state_topic_root: str(,128)
   
