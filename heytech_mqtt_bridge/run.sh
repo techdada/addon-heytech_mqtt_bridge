@@ -1,4 +1,5 @@
 #!/usr/bin/with-contenv bashio
+set -e  # Beendet das Skript sofort bei Fehlern
 set +u
 
 export heyhost=$(bashio::config 'heyhost')
@@ -28,9 +29,9 @@ if [ ! -d "$NODE_CONFIG_DIR" ]; then
   exit 1
 fi
 
-# Navigate to the application directory
-cd /usr/src/app
+# Gehe ins App-Verzeichnis
+cd /usr/src/app || exit 1
 
-# Start the Node.js application
+# Wichtig: Starte npm korrekt als PID 1!
 exec npm start
 
