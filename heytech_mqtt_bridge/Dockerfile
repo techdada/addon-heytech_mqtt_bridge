@@ -1,29 +1,21 @@
-ARG BUILD_FROM
-#FROM $BUILD_FROM
-FROM docker.io/library/node:18-alpine
-#FROM ghcr.io/hassio-addons/debian-node:latest
-#ENV LANG C.UTF-8
-#SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+# Nutzt das offizielle Home Assistant Base-Image mit S6-Overlay
+FROM ghcr.io/hassio-addons/base:14.0.3
 
-RUN apk add --no-cache \
-     jq
-#    nodejs \
-#    npm \
-#    git
+# Installiere notwendige Abhängigkeiten
+RUN apk add --no-cache jq nodejs npm
 
-# Create app directory
-#WORKDIR /usr/src/app
+# Kopiere die Anwendung nach /app
+COPY app/ /app/
+COPY package*.json /app/
 
-# Install app dependencies
-COPY package*.json /
+# Kopiere das Start-Skript ins HAOS-verwaltete Service-System
+COPY rootfs/ /
 
-RUN npm install && npm audit fix
+# Stelle sicher, dass das Skript ausführbar ist
+RUN chmod +x /app/run.sh
 
-# Bundle app source
-COPY app/ /
+# Setze das Arbeitsverzeichnis auf /app
+WORKDIR /app
 
-# Copy run script
-COPY run.sh /
-RUN chmod +x /run.sh
-RUN ls -l /
-CMD  ["/run.sh"]
+# S6-Overlay wird den Service über /etc/services.d/app/run starten
+CMD ["/bin/bash"]
