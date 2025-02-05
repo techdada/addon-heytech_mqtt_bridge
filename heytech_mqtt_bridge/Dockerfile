@@ -11,6 +11,8 @@ COPY package*.json /app/
 # Kopiere das Start-Skript ins HAOS-verwaltete Service-System
 COPY rootfs/ /
 
+RUN cd /app && npm install --only=production
+
 # Stelle sicher, dass das Skript ausführbar ist
 COPY run.sh /app/
 RUN chmod +x /app/run.sh
