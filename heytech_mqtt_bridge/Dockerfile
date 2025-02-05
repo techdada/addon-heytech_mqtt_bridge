@@ -12,6 +12,7 @@ COPY package*.json /app/
 COPY rootfs/ /
 
 # Stelle sicher, dass das Skript ausführbar ist
+COPY run.sh /app/
 RUN chmod +x /app/run.sh
 
 # Setze das Arbeitsverzeichnis auf /app
