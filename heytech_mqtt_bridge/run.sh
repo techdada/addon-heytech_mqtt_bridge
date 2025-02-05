@@ -1,6 +1,5 @@
-#!/bin/bash
+#!/usr/bin/with-contenv bash
 set -e  # Beendet das Skript sofort bei Fehlern
-set +u
 
 # Funktion zum Laden von Home Assistant Add-On Konfigurationswerten
 get_config() {
@@ -33,6 +32,9 @@ if [ ! -d "$NODE_CONFIG_DIR" ]; then
   echo "Error: Config directory $NODE_CONFIG_DIR not found!" >&2
   exit 1
 fi
+
+# Gehe ins App-Verzeichnis
+cd /app || exit 1
 
 # Wichtig: Starte npm korrekt als PID 1!
 exec npm start
