@@ -17,22 +17,21 @@ options:
   heyhost: "heytech.local"
   heyport: 3200
   heypin: 1234
+  mqttcafile: "/config/ca.crt"
   mqtthost: "mqtt.local"
   mqttport: 8883
   mqttuser: "ulf"
   mqttpass: "wereulf"
-  cafile: "/config/ca.crt"
   control_topic_root: "control/heytech"
   state_topic_root: "sensors/heytech"
 schema:
-  cafile: str
   heyhost: str
   heyport: int
   heypin: int
+  mqttcafile: str
   mqtthost: str
   mqttport: int
-#  mqttuser: str
-#  mqttpass: password
-  
-#  control_topic_root: str
-#  state_topic_root: str
+  mqttuser: str
+  mqttpass: password
+  control_topic_root: str
+  state_topic_root: str
