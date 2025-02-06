@@ -21,4 +21,4 @@ RUN chmod +x /app/run.sh
 WORKDIR /app
 
 # S6-Overlay wird den Service über /etc/services.d/app/run starten
-CMD ["/bin/bash"]
+CMD ["/app/run.sh"]
