@@ -25,13 +25,13 @@ options:
   control_topic_root: "control/heytech"
   state_topic_root: "sensors/heytech"
 schema:
-  heyhost: str(1,32)   # Fix: 1 statt 3 als Minimum
-  heyport: int(1,65535)  # Fix: 1 als Minimum, damit es allgemeiner ist
-  heypin: int(0,9999)  # Kein Fix nötig
-  mqtthost: str(1,32)   # Fix: 1 statt 3 als Minimum
-  mqttport: int(1,65535)  # Fix: 1 als Minimum
-  mqttuser: str(1,32)  # Fix: 1 statt 3 als Minimum
-  mqttpass: password  # Fix: Typ `password` statt `str`
-  cafile: str(1,255)  # Fix: 255 als Maximum, falls HA Probleme mit kurzen Werten hat
-  control_topic_root: str(1,128)  # Fix: 1 als Minimum
-  state_topic_root: str(1,128)  # Fix: 1 als Minimum
+  heyhost: str
+  heyport: int
+  heypin: int
+  mqtthost: str
+  mqttport: int
+  mqttuser: str
+  mqttpass: password
+  cafile: str(1,255)
+  control_topic_root: str
+  state_topic_root: str
