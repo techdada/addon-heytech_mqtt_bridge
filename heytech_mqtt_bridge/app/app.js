@@ -1,4 +1,4 @@
-const config = require('/config');
+//const config = require('/config');
 const MqttHandler = require('./modules/MqttHandler.js');
 
 const Heytech = require('./modules/heytech.js')({
