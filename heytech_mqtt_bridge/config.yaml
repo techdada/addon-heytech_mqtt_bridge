@@ -26,12 +26,12 @@ options:
   state_topic_root: "sensors/heytech"
 schema:
   heyhost: str(3,32)  # Fix: Anführungszeichen entfernt
-  heyport: int(1024,65535)
-  heypin: int(0,9999)
+  heyport: int(1,65535)
+  heypin: int(1,9999)
   mqtthost: str(3,32)
-  mqttport: int(1024,65535)
+  mqttport: int(1,65535)
   mqttuser: str(3,32)
   mqttpass: str(3,64)  # Fix: Keine "password", sondern `str`
-  cafile: str(3,64)
+  cafile: str(3,255)
   control_topic_root: str(3,128)
   state_topic_root: str(3,128)
