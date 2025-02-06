@@ -11,7 +11,8 @@ arch:
 startup: system
 init: false  # Fix: Muss klein geschrieben sein
 boot: auto
-map: []
+map:
+  - addon_config
 options:
   heyhost: "heytech.local"
   heyport: 3200
