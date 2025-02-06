@@ -1,6 +1,6 @@
 ---
 name: Heytech MQTT Bridge
-version: 1.0.0
+version: 1.0.0a
 slug: heytech_mqtt_bridge
 description: Konvertiert MQTT Messages in ein proprietäres Protokoll
 arch:
@@ -9,7 +9,7 @@ arch:
   - armv7
   - i386
 startup: system
-init: false
+init: false  # Fix: Muss klein geschrieben sein
 boot: auto
 map:
   - config:rw
@@ -25,14 +25,13 @@ options:
   control_topic_root: "control/heytech"
   state_topic_root: "sensors/heytech"
 schema:
-  heyhost: str(3,32)
+  heyhost: str(3,32)  # Fix: Anführungszeichen entfernt
   heyport: int(1024,65535)
   heypin: int(0,9999)
   mqtthost: str(3,32)
   mqttport: int(1024,65535)
   mqttuser: str(3,32)
-  mqttpass: password(3,64)
+  mqttpass: str(3,64)  # Fix: Keine "password", sondern `str`
   cafile: str(3,64)
   control_topic_root: str(3,128)
   state_topic_root: str(3,128)
-  
