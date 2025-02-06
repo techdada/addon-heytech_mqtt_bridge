@@ -24,8 +24,8 @@ options:
   cafile: "/config/ca.crt"
   control_topic_root: "control/heytech"
   state_topic_root: "sensors/heytech"
-#schema:
-#  heyhost: str
+schema:
+  heyhost: str
 #  heyport: int
 #  heypin: int
 #  mqtthost: str
