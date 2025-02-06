@@ -31,7 +31,7 @@ schema:
   mqtthost: str(3,32)
   mqttport: int(1024,65535)
   mqttuser: str(3,32)
-  mqttpass: password(str)
+  mqttpass: password(3,64)
   cafile: str(3,64)
   control_topic_root: str(3,128)
   state_topic_root: str(3,128)
