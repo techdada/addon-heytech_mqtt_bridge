@@ -24,6 +24,8 @@ export control_topic_root=$(get_config 'control_topic_root')
 echo "Control topic: ${control_topic_root}."
 export state_topic_root=$(get_config 'state_topic_root')
 echo "State topic: ${state_topic_root}."
+echo "/config directory: "
+ls -l /config
 echo "Starting Heytech MQTT Bridge..."
 
 # Set the config directory for the Node.js application
