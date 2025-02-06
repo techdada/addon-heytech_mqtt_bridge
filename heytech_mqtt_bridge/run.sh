@@ -11,6 +11,8 @@ echo "Heytech host: ${heyhost}."
 export heyport=$(get_config 'heyport')
 echo "Heytech port: ${heyport}."
 export heypin=$(get_config 'heypin')
+export mqttcafile=$(get_config 'mqttcafile')
+echo "MQTT CA file: ${mqttcafile}."
 export mqtthost=$(get_config 'mqtthost')
 echo "MQTT host: ${mqtthost}."
 export mqttport=$(get_config 'mqttport')
