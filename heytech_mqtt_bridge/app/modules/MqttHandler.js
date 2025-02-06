@@ -78,7 +78,7 @@ class MqttHandler extends EventEmitter {
 
     // Connection callback
     this.mqttClient.on('connect', () => {
-      this.log.error('mqtt client connected');
+      this.log.info('mqtt client connected');
       this.eventHandler.emit("ready");
       this.sendMessage("ONLINE");
     });
