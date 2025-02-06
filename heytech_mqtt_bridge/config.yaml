@@ -25,6 +25,7 @@ options:
   control_topic_root: "control/heytech"
   state_topic_root: "sensors/heytech"
 schema:
+  cafile: str
   heyhost: str
   heyport: int
   heypin: int
@@ -32,6 +33,6 @@ schema:
   mqttport: int
 #  mqttuser: str
 #  mqttpass: password
-  cafile: str(1,255)
+  
 #  control_topic_root: str
 #  state_topic_root: str
