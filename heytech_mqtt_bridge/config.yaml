@@ -9,7 +9,7 @@ arch:
   - armv7
   - i386
 startup: system
-init: FALSE
+init: false
 boot: auto
 map:
   - config:rw
@@ -29,7 +29,7 @@ schema:
   heyport: int
   heypin: int
   mqtthost: str
-  mqttport: str
+  mqttport: int
   mqttuser: str
   mqttpass: password
   cafile: str
