@@ -35,7 +35,7 @@ let mqttHandler = new MqttHandler({
         "port": process.env.mqttport,
         "user": process.env.mqttuser,
         "pass": process.env.mqttpass,
-        "cafile": process.env.cafile,
+        "cafile": process.env.mqttcafile,
         "control_topic_root": process.env.control_topic_root,
         "state_topic_root": process.env.state_topic_root
     },
