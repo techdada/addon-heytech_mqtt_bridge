@@ -238,7 +238,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     firstRunDone() {
         const result = readSop && readSkd && readSmo && readSmc && readSfi && readSmn;
         this.log.debug('First run done?: '+(result));
-        if (!$result) {
+        if (!result) {
             this.log.debug('readSop: ' + readSop);
             this.log.debug('readSkd: ' + readSkd);
             this.log.debug('readSmo: ' + readSmo);
@@ -253,7 +253,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             this.triggerSensorMessage();
             this.triggerShutterMessage();
         }
-        return $result;
+        return result;
     }
 
 
