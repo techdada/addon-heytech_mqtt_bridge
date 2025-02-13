@@ -88,10 +88,11 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         if (this.config.ip === undefined ) this.config.ip = this.config.host;
 
         this.log.debug = function (text) {  }; //console.log;
-        //this.log.debug = function (text) { console.debug(new Date() + text); }; //console.log;
-        this.log.info = function (text) { console.info(new Date() + text); };
-        this.log.warn = function (text) { console.log(new Date() + text); };
-        this.log.error = function (text) { console.log(new Date() + text); }; //function (text) { console.error(new Date() + text); };
+        // IKEA Clock: new Date().toLocaleString("sv-SE");
+        //this.log.debug = function (text) { console.debug(new Date().toLocaleString("sv-SE") + text); }; //console.log;
+        this.log.info = function (text) { console.info(new Date().toLocaleString("sv-SE") + text); };
+        this.log.warn = function (text) { console.log(new Date().toLocaleString("sv-SE") + text); };
+        this.log.error = function (text) { console.log(new Date().toLocaleString("sv-SE") + text); }; //function (text) { console.error(new Date() + text); };
 
         this.on('ready', this.onReady.bind(this));
         this.on('message', this.onMessage.bind(this));
@@ -207,6 +208,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             if (!readSkd) {
                 this.send(['skd',newLine]);
             }
+            await this.sleep(5000);
         }
 
         if (commandCallbacks.length > 0) {
@@ -240,12 +242,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         const result = readSop && readSkd && readSmo && readSmc && readSfi && readSmn;
         this.log.debug('First run done?: '+(result));
         if (!result) {
-            this.log.debug('readSop: ' + readSop);
-            this.log.debug('readSkd: ' + readSkd);
-            this.log.debug('readSmo: ' + readSmo);
-            this.log.debug('readSmc: ' + readSmc);
-            this.log.debug('readSfi: ' + readSfi);
-            this.log.debug('readSmn: ' + readSmn);
+            this.log.debug('read: Sop:' + readSop + ' Skd: ' + readSkd + ' Smo: ' + readSmo + ' Smc: ' + readSmc + ' Sfi: ' + readSfi + ' Smn: ' + readSmn);
         } else {
             this.log.debug(that.config.shutter);
             this.log.debug(that.config.group);
@@ -851,14 +848,14 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
         if (section === "shutter") {
             if (this.config.shutter[id] === undefined) {
-                console.err("invalid shutter: "+id);
+                this.log.error("invalid shutter: "+id);
                 return;
             }
             this.config.shutter[id].state = value;
         }
         if (section === "group") {
             if (this.config.group[id] === undefined) {
-                console.err("invalid shutter: "+id);
+                this.log.error("invalid shutter: "+id);
                 return;
             }
             this.config.group[id].state = value;
@@ -1203,7 +1200,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         var strTermNach = "";
         
         if (!this.connected) {
-            console.log('Connection lost. Reconnecting...');
+            this.log.error('Connection lost. Reconnecting...');
             await this.connect();
         }
         
