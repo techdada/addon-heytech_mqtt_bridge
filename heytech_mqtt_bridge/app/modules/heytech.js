@@ -153,8 +153,10 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             await this.client.connect(params);
             this.connected = true;
             console.log('Connected to Telnet server');
-            this.onConnected();
             this.startListening();
+
+            this.onConnected();
+            
 
             // 🔥 Handle disconnect and error events
             this.client.socket.on('close', () => this.onDisconnected());
@@ -178,7 +180,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         }
     }
 
-    onConnected() {
+    async onConnected() {
         if (this.config.pin !== '') {
             this.send([
                 'rsc',newLine,
