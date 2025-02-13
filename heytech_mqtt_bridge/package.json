@@ -7,10 +7,10 @@
         "start": "node app.js"
     },
     "dependencies": {
-        "config": "^2.0.2",
+        "config": "^2.0.2", 
         "lodash": "^4.17.21",
-        "mqtt": "^4.2.6",
-        "telnet-rxjs": "^2.2.0"
+        "mqtt": "^5.10.3",
+        "telnet-client": "^2.2.2"
     },
     "keywords": [
         "MQTT",

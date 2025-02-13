@@ -3,7 +3,8 @@
 
 const _ = require('lodash');
 const EventEmitter = require('events');
-const {Telnet} = require('telnet-rxjs');
+//const {Telnet} = require('telnet-rxjs');
+const {Telnet} = require('telnet-client');
 
 const newLine = String.fromCharCode(13);
 const START_SOP = 'start_sop';
@@ -38,6 +39,9 @@ let readSmc = false;
 let readSfi = false;
 let readSmn = false;
 
+let lastStrings = '';
+
+
 const actualPercents = {};
 const actualSensors = {};
 const actualShutters = {};
@@ -69,326 +73,301 @@ const memoizeDebounce = function (func, wait = 0, options = {}) {
     };
 };
 
-const calculateLuxValueBasedOnHeytech = function (wert) {
-    let luxPrefix;
-    let lux;
 
-    if (wert < 10) {              // - LuxPrefix = 1 --> Lux-Wert n steht für   1 ... 900 Lux
-        luxPrefix = 0;
-        lux = wert;             //  ' - LuxPrefix = 0 --> Lux-Wert n steht für 0,1 ... 0,9 Lux
-    } else if (wert <= 19) {     //  ' - LuxPrefix = 2 --> Lux-Wert n steht für   1 ... 900 kLux
-        luxPrefix = 1;
-        lux = wert - 9;
-    } else if (wert <= 28) {
-        luxPrefix = 1;
-        lux = wert - 20;
-        lux = lux * 10;
-        lux = lux + 20;
-    } else if (wert <= 36) {
-        luxPrefix = 1;
-        lux = wert - 29;
-        lux = lux * 100;
-        lux = lux + 200;
-    } else if (wert <= 136) {
-        luxPrefix = 2;
-        lux = wert - 36;
-    } else {
-        luxPrefix = 2;
-        lux = wert - 137;
-        lux = lux * 10;
-        lux = lux + 110;
+let start;
+
+class Heytech extends EventEmitter { //extends utils.Adapter {
+
+
+    constructor(options) {
+        super();
+
+        this.config = options.config;
+        this.log = [];
+        // allow use of hostname, if no ip set.
+        if (this.config.ip === undefined ) this.config.ip = this.config.host;
+
+        this.log.debug = function (text) { console.debug(new Date() + text); }; //console.log;
+        this.log.info = function (text) { console.info(new Date() + text); };
+        this.log.warn = function (text) { console.log(new Date() + text); };
+        this.log.error = function (text) { console.log(new Date() + text); }; //function (text) { console.error(new Date() + text); };
+
+        this.on('ready', this.onReady.bind(this));
+        this.on('message', this.onMessage.bind(this));
+        this.on('unload', this.onUnload.bind(this));
+
+        this.config.group = {
+        };
+        this.config.controller = {
+            "model": "",
+            "numberOfChannels":0
+        };
+        this.config.sensor = {};
+        this.config.shutter = {};
+        this.config.scene = {};
+        this.config.device = {};
+
+        //cC = createClient.bind(this);
+        this.buffer = '';
+        this.client = new Telnet();
+        this.connected = false;
+        this.connecting = false;
+
+
+        //temp variable for processIncomingData
+        this.smn = '';
+
+        // Event-Handling für Verbindungsabbrüche
+        this.client.on('close', () => {
+            this.log.info('Telnet connection closed.');
+            this.connected = false;
+        });
+
+        this.client.on('error', (err) => {
+            this.log.error('Telnet error:', err);
+            this.connected = false;
+        });
+
+        const d = new Date();
+        start = d.getTime();
+
+        this.communicator = null;
     }
 
-    let resultLux;
-    if (luxPrefix === 0) {
-        resultLux = 1 - (10 - lux) / 10;
-    } else if (luxPrefix === 1) {
-        resultLux = lux;
-    } else { // LuxPrefix === 2
-        resultLux = lux * 1000;
-    }
-    return resultLux;
-};
 
-const calculateLuxValueCustom = function (data) {
-    let briV = 0;
-    if (data < 19) {
-        briV = data * 1;
-    } else if (data > 19 && data < 29) {
-        briV = data * 4;
-    } else if (data > 29 && data < 39) {
-        briV = data * 8;
-    } else if (data > 39 && data < 49) {
-        briV = data * 15;
-    } else if (data > 49 && data < 59) {
-        briV = data * 22;
-    } else if (data > 59 && data < 69) {
-        briV = data * 30;
-    } else if (data > 69 && data < 79) {
-        briV = data * 40;
-    } else if (data > 79 && data < 89) {
-        briV = data * 50;
-    } else if (data > 89 && data < 99) {
-        briV = data * 64;
-    } else if (data > 99 && data < 109) {
-        briV = data * 80;
-    } else if (data > 109 && data < 119) {
-        briV = data * 100;
-    } else if (data > 119 && data < 129) {
-        briV = data * 117;
-    } else if (data > 129 && data < 139) {
-        briV = data * 138;
-    } else if (data > 139 && data < 149) {
-        briV = data * 157;
-    } else if (data > 149 && data < 159) {
-        briV = data * 173;
-    } else if (data > 159 && data < 169) {
-        briV = data * 194;
-    } else if (data > 169 && data < 179) {
-        briV = data * 212;
-    } else if (data > 179 && data < 189) {
-        briV = data * 228;
-    } else if (data > 189 && data < 199) {
-        briV = data * 247;
-    } else if (data > 199 && data < 209) {
-        briV = data * 265;
-    } else if (data > 209 && data < 219) {
-        briV = data * 286;
-    } else if (data > 219 && data < 229) {
-        briV = data * 305;
-    } else if (data > 229 && data < 239) {
-        briV = data * 322;
-    } else if (data > 239 && data < 249) {
-        briV = data * 342;
-    } else if (data > 249 && data < 259) {
-        briV = data * 360;
-    }
-    return briV;
-};
+    async connect() {
+        if (this.connected || this.connecting) {
+            return; // Falls schon verbunden oder am Verbinden, nichts tun
+        }
 
-function createClient() {
-    let lastStrings = '';
-    this.log.debug = function (text) {}; //console.log;
-    this.log.info = function (text) { console.info(new Date() + text); };
-    this.log.warn = function (text) { console.log(new Date() + text); };
-    this.log.error = function (text) { console.log(new Date() + text); }; //function (text) { console.error(new Date() + text); };
+        this.connecting = true;
+        const params = {
+            host: this.config.ip,
+            port: this.config.port,
+            shellPrompt: false, // Falls dein Server kein bestimmtes Prompt sendet
+            timeout: 5000,
+        };
 
-    if (this.config.ip === '' || this.config.ip === null || this.config.ip === undefined) {
-        this.log.warn('No ip address in configuration found');
-    } else if (this.config.port === '' || this.config.port === null || this.config.port === undefined) {
-        this.log.warn('No port in configuration found');
-    } else {
-        this.log.info("Connecting to "+this.config.ip+":"+this.config.port);
-        client = Telnet.client(this.config.ip + ':' + this.config.port);
+        try {
+            console.log('Connecting to Telnet server...');
+            await this.client.connect(params);
+            this.connected = true;
+            console.log('Connected to Telnet server');
+            this.onConnected();
+            this.startListening();
+
+            // 🔥 Handle disconnect and error events
+            this.client.socket.on('close', () => this.onDisconnected());
+            this.client.socket.on('error', (err) => this.onDisconnected(err));
+        } catch (error) {
+            console.error('Telnet connection error:', error);
+        } finally {
+            this.connecting = false;
+        }
+
+        // regelmäßig nach aktuellem Status pollen
         setInterval(() => {
             this.sendeRefreshBefehl();
-        }, this.config.refresh || 300000);
+        }, this.config.refresh || 3000000);
+    }
 
-        client.filter((event) => event instanceof Telnet.Event.Connected)
-            .subscribe(async () => {
-                connected = true;
-                connecting = false;
-                const that = this;
+    async send(group) {
+        for (const cmd of group) {
+            await this.client.send(cmd);
+            await new Promise(resolve => setTimeout(resolve,50));
+        }
+    }
 
-                function firstRunDone() {
-                    const result = readSop && readSkd && readSmo && readSmc && readSfi && readSmn;
-                    that.log.debug('FIRST RUN DONE?: ' + (result));
-                    if (!result) {
-                        that.log.debug('readSop: ' + readSop);
-                        that.log.debug('readSkd: ' + readSkd);
-                        that.log.debug('readSmo: ' + readSmo);
-                        that.log.debug('readSmc: ' + readSmc);
-                        that.log.debug('readSfi: ' + readSfi);
-                        that.log.debug('readSmn: ' + readSmn);
-                    } else {
-                        that.log.debug(that.config.shutter);
-                        that.log.debug(that.config.group);
-                        that.log.debug(that.config.scene);
-                        that.log.debug(that.config.sensor);
-                        that.triggerSensorMessage();
-                        that.triggerShutterMessage();
-                    }
-                    return result;
-                }
-
-                this.log.info('Connected to controller');
-
-
-                if (this.config.pin !== '') {
-                    client.send('rsc');
-                    client.send(newLine);
-                    client.send(this.config.pin.toString());
-                    client.send(newLine);
-                }
-                while (!firstRunDone()) {
-                    client.send(newLine);
-                    client.send('sss');
-                    client.send(newLine);
-                    client.send('sss');
-                    client.send(newLine);
-                    if (!readSmo) {
-                        client.send('smo');
-                        client.send(newLine);
-                    }
-                    client.send('sdt');
-                    client.send(newLine);
-                    if (!readSmc) {
-                        client.send('smc');
-                        client.send(newLine);
-                    }
-                    if (!readSfi) {
-                        client.send('sfi');
-                        client.send(newLine);
-                    }
-                    if (!readSmn) {
-                        client.send('smn');
-                        client.send(newLine);
-                    }
-                    if (!readSkd) {
-                        client.send('skd');
-                        client.send(newLine);
-                    }
-                    await this.sleep(2000);
-                }
-
-                if (commandCallbacks.length > 0) {
-                    await this.waitForRunningCommandCallbacks();
-                    runningCommandCallbacks = true;
-                    this.checkShutterStatus()();
-
-                    let commandCallback;
-                    do {
-                        commandCallback = commandCallbacks.shift();
-                        if (commandCallback) {
-                            commandCallback();
-                            await this.sleep(500);
-                        }
-                    } while (commandCallbacks.length > 0);
-                    runningCommandCallbacks = false;
-                }
-
-            });
-
-        client.filter((event) => event instanceof Telnet.Event.Disconnected)
-            .subscribe(() => {
-                this.log.info('Disconnected from controller');
-                connected = false;
-                connecting = false;
-            });
-
-        client.subscribe(
-            () => {
-                // console.log('Received event:', event);
-            },
-            (error) => {
-                console.error('An error occurred:', error);
+    onConnected() {
+        if (this.config.pin !== '') {
+            this.send([
+                'rsc',newLine,
+                this.config.pin.toString(),newLine
+            ]);
+        }
+        while (!this.firstRunDone()) {
+            this.send([
+                newLine,
+                'sss',newLine,
+                'sss',newLine
+            ]);
+            if (!readSmo) {
+                this.send(['smo',newLine]);
             }
-        );
-
-        let smn = '';
-
-        client.data.subscribe((data) => {
-            this.log.debug('Data: ' + data);
-
-            lastStrings = lastStrings.concat(data);
-            // this.log.debug(lastStrings);
-            if (!readSmn && lastStrings.indexOf(START_SMN) >= 0 || lastStrings.indexOf(ENDE_SMN) >= 0) {
-                if (lastStrings.includes(ENDE_SMN_START_STI)) { //check end of smn data
-                    smn = smn.concat(data); // erst hier concaten, weil ansonsten das if lastStrings.endsWith nicht mehr stimmt, weil die telnet Verbindung schon wieder was gesendet hat...
-                    const channels = smn.match(/\d\d,.*,\d,/gm);
-                    wOutputs(channels);
-                    smn = '';
-                    lastStrings = '';
-                    this.log.debug('Shutters gelesen');
-                    readSmn = true;
-                } else {
-                    smn = smn.concat(data);
-                }
-                //console.log("==================\n");
-            } else if (lastStrings.indexOf(START_SOP) >= 0 && lastStrings.indexOf(ENDE_SOP) >= 0) {
-                // SOP  Oeffnungs-Prozent
-                // start_sop0,0,0,0,0,0,0,0,0,0,0,0,0,0,100,100,100,100,100,100,100,100,100,100,100,0,100,100,100,100,100,100,ende_sop
-
-                const regexpResults = lastStrings.match('t_sop([^]+)ende_sop');
-                if (regexpResults && regexpResults.length > 0) {
-                    const statusStr = regexpResults[regexpResults.length - 1].replace('t_sop', '').replace(ENDE_SOP, '');
-                    const rolladenStatus = statusStr.split(',').slice(0, controllerChannelCount || 32);
-                    lastStrings = '';
-                    this.log.debug(rolladenStatus);
-                    //check rolladenStatus
-                    const statusKaputt = rolladenStatus.some(value => isNaN(value));
-                    if (!statusKaputt) {
-                        wStatus(rolladenStatus);
-                        readSop = true;
-                    } else {
-                        this.log.error('Rolladenstatus konnte nicht interpretiert werden: ' + statusStr);
-                    }
-                }
-
-            } else if (lastStrings.indexOf(START_SKD) >= 0 && lastStrings.indexOf(ENDE_SKD) >= 0) {
-                // Klima-Daten
-                // start_skd37,999,999,999,999,19,0,18,19,0,0,0,0,0,37,1,ende_skd
-                const klimaStr = lastStrings.substring(
-                    lastStrings.indexOf(START_SKD) + START_SKD.length,
-                    lastStrings.indexOf(ENDE_SKD, lastStrings.indexOf(START_SKD))
-                );
-                const klimadaten = klimaStr.split(',');
-                lastStrings = '';
-                this.log.debug('Klima gelesen: ' + klimadaten);
-                wKlima(klimadaten);
-                readSkd = true;
-            } else if (lastStrings.indexOf(START_SMO) >= 0 && lastStrings.indexOf(ENDE_SMO) >= 0) {
-                // Model Kennung
-                let modelStr = lastStrings.substring(
-                    lastStrings.indexOf(START_SMO) + START_SMO.length,
-                    lastStrings.indexOf(ENDE_SMO, lastStrings.indexOf(START_SMO))
-                );
-                this.log.info('Model: ' + modelStr);
-                modelStr = modelStr.replace('HEYtech ', '');
-                this.updateInventory('controller','model',{
-                    'model': modelStr,
-                    "status": 0
-                });
-
-                lastStrings = '';
-                readSmo = true;
-            } else if (lastStrings.indexOf(START_SMC) >= 0 && lastStrings.indexOf(ENDE_SMC) >= 0) {
-                // Number of channels
-                const noChannelStr = lastStrings.substring(
-                    lastStrings.indexOf(START_SMC) + START_SMC.length,
-                    lastStrings.indexOf(ENDE_SMC, lastStrings.indexOf(START_SMC))
-                );
-                this.log.debug('Number of Channels :' + noChannelStr);
-                //this.extendObject('controller', {'native': {'channels': noChannelStr}});
-                controllerChannelCount = Number(noChannelStr);
-                this.updateInventory("controller","numberOfChannels",{
-                    "numberOfChannels": noChannelStr
-                });
-
-                lastStrings = '';
-                readSmc = true;
-            } else if (lastStrings.indexOf(START_SFI) >= 0 && lastStrings.indexOf(ENDE_SFI) >= 0) {
-                // Software Version
-                const svStr = lastStrings.substring(
-                    lastStrings.indexOf(START_SFI) + START_SFI.length,
-                    lastStrings.indexOf(ENDE_SFI, lastStrings.indexOf(START_SFI))
-                );
-                this.log.info('Software version: ' + svStr);
-                controllerSoftwareVersion = svStr;
-                //this.extendObject('controller', {'native': {'swversion': svStr}});
-                this.updateInventory("controller","version",{
-                    "version": controllerSoftwareVersion
-                });
-                lastStrings = '';
-                readSfi = true;
+            this.send(['sdt',newLine]);
+            if (!readSfi) {
+                this.send(['sfi',newLine]);
             }
+            if (!readSmn) {
+                this.send(['smn',newLine]);
+            }
+            if (!readSkd) {
+                this.send(['skd',newLine]);
+            }
+        }
 
+        if (commandCallbacks.length > 0) {
+            await this.waitForRunningCommandCallbacks();
+            runningCommandCallbacks = true;
+            this.checkShutterStatus()();
+
+            let commandCallback;
+            do {
+                commandCallback = commandCallbacks.shift();
+                if (commandCallback) {
+                    commandCallback();
+                    await this.sleep(500);
+                }
+            } while (commandCallbacks.length > 0);
+            runningCommandCallbacks = false;
+        }
+    }
+
+    onDisconnected(err = '') {
+        this.log.info('Disconnected from controller');
+        if (err !== '') {
+            this.log.error('❌ Disconnect due to error:', error);
+        }
+        connected = false;
+        connecting = false;
+    }
+
+    
+    firstRunDone() {
+        const result = readSop && readSkd && readSmo && readSmc && readSfi && readSmn;
+        this.log.debug('First run done?: '+(result));
+        if (!$result) {
+            this.log.debug('readSop: ' + readSop);
+            this.log.debug('readSkd: ' + readSkd);
+            this.log.debug('readSmo: ' + readSmo);
+            this.log.debug('readSmc: ' + readSmc);
+            this.log.debug('readSfi: ' + readSfi);
+            this.log.debug('readSmn: ' + readSmn);
+        } else {
+            this.log.debug(that.config.shutter);
+            this.log.debug(that.config.group);
+            this.log.debug(that.config.scene);
+            this.log.debug(that.config.sensor);
+            this.triggerSensorMessage();
+            this.triggerShutterMessage();
+        }
+        return $result;
+    }
+
+
+    startListening() {
+        if (!this.client || !this.client.socket) {
+            this.log.error('⚠️ No active socket connection.');
+            return;
+        }
+
+        this.client.socket.on('data', (data) => {
+            const text = data.toString();
+            lastStrings += text; // Empfangene Daten speichern
+            this.log.debug('Received data:', text);
+            this.processIncomingData(text);
         });
     }
 
-    const wOutputs = writeOutputs.bind(this);
+    processIncomingData(data) {
 
-    function writeOutputs(data) {
+        this.log.debug('Data: ' + data);
+
+        lastStrings = lastStrings.concat(data);
+        // Beispielhafte Mustererkennung im empfangenen Datenstrom
+        if (!readSmn && lastStrings.indexOf(START_SMN) >= 0 || lastStrings.indexOf(ENDE_SMN) >= 0) {
+            if (lastStrings.includes(ENDE_SMN_START_STI)) { //check end of smn data
+                this.smn = this.smn.concat(data); // erst hier concaten, weil ansonsten das if lastStrings.endsWith nicht mehr stimmt, weil die telnet Verbindung schon wieder was gesendet hat...
+                const channels = this.smn.match(/\d\d,.*,\d,/gm);
+                wOutputs(channels);
+                this.smn = '';
+                lastStrings = '';
+                this.log.debug('Shutters gelesen');
+                readSmn = true;
+            } else {
+                this.smn = this.smn.concat(data);
+            }
+            //console.log("==================\n");
+        } else if (lastStrings.indexOf(START_SOP) >= 0 && lastStrings.indexOf(ENDE_SOP) >= 0) {
+            // SOP  Oeffnungs-Prozent
+            // start_sop0,0,0,0,0,0,0,0,0,0,0,0,0,0,100,100,100,100,100,100,100,100,100,100,100,0,100,100,100,100,100,100,ende_sop
+
+            const regexpResults = lastStrings.match('t_sop([^]+)ende_sop');
+            if (regexpResults && regexpResults.length > 0) {
+                const statusStr = regexpResults[regexpResults.length - 1].replace('t_sop', '').replace(ENDE_SOP, '');
+                const rolladenStatus = statusStr.split(',').slice(0, controllerChannelCount || 32);
+                lastStrings = '';
+                this.log.debug(rolladenStatus);
+                //check rolladenStatus
+                const statusKaputt = rolladenStatus.some(value => isNaN(value));
+                if (!statusKaputt) {
+                    this.writeStatus(rolladenStatus);
+                    readSop = true;
+                } else {
+                    this.log.error('Rolladenstatus konnte nicht interpretiert werden: ' + statusStr);
+                }
+            }
+
+        } else if (lastStrings.indexOf(START_SKD) >= 0 && lastStrings.indexOf(ENDE_SKD) >= 0) {
+            // Klima-Daten
+            // start_skd37,999,999,999,999,19,0,18,19,0,0,0,0,0,37,1,ende_skd
+            const klimaStr = lastStrings.substring(
+                lastStrings.indexOf(START_SKD) + START_SKD.length,
+                lastStrings.indexOf(ENDE_SKD, lastStrings.indexOf(START_SKD))
+            );
+            const klimadaten = klimaStr.split(',');
+            lastStrings = '';
+            this.log.debug('Klima gelesen: ' + klimadaten);
+            this.writeKlima(klimadaten);
+            readSkd = true;
+        } else if (lastStrings.indexOf(START_SMO) >= 0 && lastStrings.indexOf(ENDE_SMO) >= 0) {
+            // Model Kennung
+            let modelStr = lastStrings.substring(
+                lastStrings.indexOf(START_SMO) + START_SMO.length,
+                lastStrings.indexOf(ENDE_SMO, lastStrings.indexOf(START_SMO))
+            );
+            this.log.info('Model: ' + modelStr);
+            modelStr = modelStr.replace('HEYtech ', '');
+            this.updateInventory('controller','model',{
+                'model': modelStr,
+                "status": 0
+            });
+
+            lastStrings = '';
+            readSmo = true;
+        } else if (lastStrings.indexOf(START_SMC) >= 0 && lastStrings.indexOf(ENDE_SMC) >= 0) {
+            // Number of channels
+            const noChannelStr = lastStrings.substring(
+                lastStrings.indexOf(START_SMC) + START_SMC.length,
+                lastStrings.indexOf(ENDE_SMC, lastStrings.indexOf(START_SMC))
+            );
+            this.log.debug('Number of Channels :' + noChannelStr);
+            //this.extendObject('controller', {'native': {'channels': noChannelStr}});
+            controllerChannelCount = Number(noChannelStr);
+            this.updateInventory("controller","numberOfChannels",{
+                "numberOfChannels": noChannelStr
+            });
+
+            lastStrings = '';
+            readSmc = true;
+        } else if (lastStrings.indexOf(START_SFI) >= 0 && lastStrings.indexOf(ENDE_SFI) >= 0) {
+            // Software Version
+            const svStr = lastStrings.substring(
+                lastStrings.indexOf(START_SFI) + START_SFI.length,
+                lastStrings.indexOf(ENDE_SFI, lastStrings.indexOf(START_SFI))
+            );
+            this.log.info('Software version: ' + svStr);
+            controllerSoftwareVersion = svStr;
+            //this.extendObject('controller', {'native': {'swversion': svStr}});
+            this.updateInventory("controller","version",{
+                "version": controllerSoftwareVersion
+            });
+            lastStrings = '';
+            readSfi = true;
+        }
+    }
+
+    writeOutputs(data) {
         const that = this;
         const n = data.length;
 
@@ -459,10 +438,7 @@ function createClient() {
         }
     }
 
-
-    const wStatus = writeStatus.bind(this);
-
-    function writeStatus(data) {
+    writeStatus(data) {
         //let actualPercents = {};
 
         const that = this;
@@ -501,9 +477,7 @@ function createClient() {
         }
     }
 
-    const wKlima = writeKlima.bind(this);
-
-    function writeKlima(data) {
+    writeKlima(data) {
         const that = this;
 
         this.getStates('sensor', function (err, states) {
@@ -586,12 +560,12 @@ function createClient() {
                     state: parseInt(data[0]),
                     unit: 'Byte'
                 });
-                const resultLuxCustom = calculateLuxValueCustom(data[0]);
+                const resultLuxCustom = this.calculateLuxValueCustom(data[0]);
                 if (resultLuxCustom > 0) {
                     that.setState('sensor','bri_actual', resultLuxCustom);
                 }
 
-                const resultLuxHeytech = calculateLuxValueBasedOnHeytech(data[0]);
+                const resultLuxHeytech = this.calculateLuxValueBasedOnHeytech(data[0]);
                 if (resultLuxHeytech > 0) {
                     that.setState('sensor','bri_actual_hey', resultLuxHeytech);
                 }
@@ -603,7 +577,7 @@ function createClient() {
                     unit: 'lux',
                     state: parseInt(data[14])
                 });
-                const resultLuxHeytech = calculateLuxValueBasedOnHeytech(data[14]);
+                const resultLuxHeytech = this.calculateLuxValueBasedOnHeytech(data[14]);
                 if (resultLuxHeytech > 0) {
                     that.updateInventory('sensor','bri_average_hey',{
                         name: 'Average brightness as in Heytech App',
@@ -723,43 +697,106 @@ function createClient() {
         this.log.debug(this.getStates('sensor'));
 
     }
-}
 
-let cC;
-let start;
+    calculateLuxValueCustom(data) {
+        let briV = 0;
+        if (data < 19) {
+            briV = data * 1;
+        } else if (data > 19 && data < 29) {
+            briV = data * 4;
+        } else if (data > 29 && data < 39) {
+            briV = data * 8;
+        } else if (data > 39 && data < 49) {
+            briV = data * 15;
+        } else if (data > 49 && data < 59) {
+            briV = data * 22;
+        } else if (data > 59 && data < 69) {
+            briV = data * 30;
+        } else if (data > 69 && data < 79) {
+            briV = data * 40;
+        } else if (data > 79 && data < 89) {
+            briV = data * 50;
+        } else if (data > 89 && data < 99) {
+            briV = data * 64;
+        } else if (data > 99 && data < 109) {
+            briV = data * 80;
+        } else if (data > 109 && data < 119) {
+            briV = data * 100;
+        } else if (data > 119 && data < 129) {
+            briV = data * 117;
+        } else if (data > 129 && data < 139) {
+            briV = data * 138;
+        } else if (data > 139 && data < 149) {
+            briV = data * 157;
+        } else if (data > 149 && data < 159) {
+            briV = data * 173;
+        } else if (data > 159 && data < 169) {
+            briV = data * 194;
+        } else if (data > 169 && data < 179) {
+            briV = data * 212;
+        } else if (data > 179 && data < 189) {
+            briV = data * 228;
+        } else if (data > 189 && data < 199) {
+            briV = data * 247;
+        } else if (data > 199 && data < 209) {
+            briV = data * 265;
+        } else if (data > 209 && data < 219) {
+            briV = data * 286;
+        } else if (data > 219 && data < 229) {
+            briV = data * 305;
+        } else if (data > 229 && data < 239) {
+            briV = data * 322;
+        } else if (data > 239 && data < 249) {
+            briV = data * 342;
+        } else if (data > 249 && data < 259) {
+            briV = data * 360;
+        }
+        return briV;
+    };
 
-class Heytech extends EventEmitter { //extends utils.Adapter {
+
+    calculateLuxValueBasedOnHeytech(wert) {
+        let luxPrefix;
+        let lux;
+    
+        if (wert < 10) {              // - LuxPrefix = 1 --> Lux-Wert n steht für   1 ... 900 Lux
+            luxPrefix = 0;
+            lux = wert;             //  ' - LuxPrefix = 0 --> Lux-Wert n steht für 0,1 ... 0,9 Lux
+        } else if (wert <= 19) {     //  ' - LuxPrefix = 2 --> Lux-Wert n steht für   1 ... 900 kLux
+            luxPrefix = 1;
+            lux = wert - 9;
+        } else if (wert <= 28) {
+            luxPrefix = 1;
+            lux = wert - 20;
+            lux = lux * 10;
+            lux = lux + 20;
+        } else if (wert <= 36) {
+            luxPrefix = 1;
+            lux = wert - 29;
+            lux = lux * 100;
+            lux = lux + 200;
+        } else if (wert <= 136) {
+            luxPrefix = 2;
+            lux = wert - 36;
+        } else {
+            luxPrefix = 2;
+            lux = wert - 137;
+            lux = lux * 10;
+            lux = lux + 110;
+        }
+    
+        let resultLux;
+        if (luxPrefix === 0) {
+            resultLux = 1 - (10 - lux) / 10;
+        } else if (luxPrefix === 1) {
+            resultLux = lux;
+        } else { // LuxPrefix === 2
+            resultLux = lux * 1000;
+        }
+        return resultLux;
+    };
 
 
-    constructor(options) {
-        super();
-
-        this.config = options.config;
-        this.log = [];
-        // allow use of hostname, if no ip set.
-        if (this.config.ip === undefined ) this.config.ip = this.config.host;
-
-        this.on('ready', this.onReady.bind(this));
-        this.on('message', this.onMessage.bind(this));
-        this.on('unload', this.onUnload.bind(this));
-
-        this.config.group = {
-        };
-        this.config.controller = {
-            "model": "",
-            "numberOfChannels":0
-        };
-        this.config.sensor = {};
-        this.config.shutter = {};
-        this.config.scene = {};
-        this.config.device = {};
-
-        cC = createClient.bind(this);
-        const d = new Date();
-        start = d.getTime();
-
-        this.communicator = null;
-    }
     setCommunicator(communicator) {
         this.communicator = communicator;
     }
@@ -915,9 +952,10 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             this.log.error("Cannot connect - no ip or hostname configured");
             return;
         }
-        cC();
-        client.connect();
-
+        //cC();
+        //client.connect();
+        //this.client.connect();
+        this.connect();
     }
 
     /**
@@ -1123,8 +1161,9 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     checkShutterStatus() {
         return _.debounce(async () => {
             const intervalID = setInterval(() => {
-                client.send('sop');
-                client.send(newLine);
+                //client.send('sop');
+                //client.send(newLine);
+                this.send(['sop',newLine]);
             }, 5000);
             checkShutterStatusClearTimeoutHandler = setTimeout(() => {
                 clearInterval(intervalID);
@@ -1156,72 +1195,65 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     }
 
     async sendeHandsteuerungsBefehl(rolladenId, befehl, terminiereNach = 0) {
-        const handsteuerungAusfuehrung = () => {
-            const runFor = terminiereNach;
-            const runCmd = befehl;
-            var strTermNach = "";
-            if (terminiereNach > 0) strTermNach = String(terminiereNach);
-            this.log.info("HandsteuerungsAusfuehrung: "+rolladenId+" "+runCmd+" "+strTermNach);
+        const runFor = terminiereNach;
+        const runCmd = befehl;
+        var strTermNach = "";
+        
+        if (!this.connected) {
+            console.log('Connection lost. Reconnecting...');
+            await this.connect();
+        }
+        
+        this.log.info("HandsteuerungsAusfuehrung: "+rolladenId+" "+runCmd+" "+String(terminiereNach));
 
-            runningCommandCallbacks = true;
-            if (this.config.pin !== '') {
-                client.send('rsc');
-                client.send(newLine);
-                client.send(this.config.pin.toString());
-                client.send(newLine);
-            }
-            client.send('rhi');
-            client.send(newLine);
-            client.send(newLine);
-            client.send('rhb');
-            client.send(newLine);
-            client.send(String(rolladenId));
-            client.send(newLine);
-            client.send(String(runCmd));
-            client.send(newLine);
-            client.send(newLine);
-            client.send('rhe');
-            client.send(newLine);
-            client.send(newLine);
-            if (runFor > 100) {
-                this.sleep(runFor);
-
-                client.send('rhi');
-                client.send(newLine);
-                client.send(newLine);
-
-                client.send('rhb');
-                client.send(newLine);
-                client.send(String(rolladenId));
-                client.send(newLine);
-                client.send("off");
-                client.send(newLine);
-                client.send(newLine);
-                client.send('rhe');
-                client.send(newLine);
-                client.send(newLine);
-            }
-            /*client.send('rhe');
-            client.send(newLine);
-            client.send(newLine);*/
-            this.triggerMessage(rolladenId,befehl);
-            runningCommandCallbacks = false;
-
-        };
-        if (connected) {
-            await this.waitForRunningCommandCallbacks();
-            handsteuerungAusfuehrung();
-            this.checkShutterStatus()();
-        } else {
-            if (!connecting) {
-                client.disconnect();
-            }
-            commandCallbacks.push(handsteuerungAusfuehrung);
-            if (!connecting) {
-                connecting = true;
-                client.connect();
+        if (this.config.pin !== '') {
+            const responses = [];
+            for (const cmd of ['rsc',newLine,this.config.pin.toString(),newLine] ) {
+                await this.client.send(cmd);
+                await new Promise(resolve => setTimeout(resolve, 50));
             }
         }
+
+        /**
+         * Handsteuerungsbefehl senden und auf Reiherfolge achten, aber Ergebnis gekonnt igonrieren:
+         */
+        this.send([
+            'rhi',
+            newLine,
+            newLine,
+            'rhb',
+            newLine,
+            String(rolladenId),
+            newLine,
+            String(runCmd),
+            newLine,
+            newLine,
+            'rhe',
+            newLine,
+            newLine
+        ]);
+        if (runFor > 100) {
+            await new Promise(resolve => setTimeout(resolve,runFor));
+            this.send([
+                'rhi',
+                newLine,
+                newLine,
+                'rhb',
+                newLine,
+                String(rolladenId),
+                newLine,
+                'off',
+                newLine,
+                newLine,
+                'rhe',
+                newLine,
+                newLine
+            ]);
+        }
+        
+        this.triggerMessage(rolladenId,befehl);
+        this.checkShutterStatus()();
+        
 
     }
 
@@ -1279,27 +1311,27 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         const refreshBefehl = () => {
             runningCommandCallbacks = true;
             if (this.config.pin !== '') {
-                client.send('rsc');
-                client.send(newLine);
-                client.send(this.config.pin.toString());
-                client.send(newLine);
+                this.send([
+                    'rsc',newLine,
+                    this.config.pin.toString(),newLine
+                ]);
             }
-            client.send('skd');
-            client.send(newLine);
+            this.send(['skd',newLine]);
             runningCommandCallbacks = false;
         };
-        if (connected) {
+        if (this.connected) {
             await this.waitForRunningCommandCallbacks();
             refreshBefehl();
         } else {
-            if (!connecting) {
-                client.disconnect();
+            if (!this.connecting) {
+                this.client.disconnect();
             }
             commandCallbacks.push(refreshBefehl);
-            if (!connecting) {
-                connecting = true;
-                client.connect();
-            }
+            //if (!this.connecting) {
+            //    this.connecting = true;
+                //this.client.connect();
+            //}
+            this.connect();
         }
 
     }
@@ -1308,34 +1340,34 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         const szenarioAusfuehrung = () => {
             runningCommandCallbacks = true;
             if (this.config.pin !== '') {
-                client.send('rsc');
-                client.send(newLine);
-                client.send(this.config.pin);
-                client.send(newLine);
+                this.send([
+                    'rsc',newLine,
+                    this.config.pin,newLine
+                ]);
             }
-            client.send('rsa');
-            client.send(newLine);
-            client.send(rolladenId);
-            client.send(newLine);
-            client.send(newLine);
-            client.send('sop');
-            client.send(newLine);
-            client.send(newLine);
+            this.send([
+                'rsa',newLine,
+                rolladenId,newLine,newLine,
+                'sop',newLine,newLine
+            ]);
             runningCommandCallbacks = false;
         };
-        if (connected) {
+        if (this.connected) {
             await this.waitForRunningCommandCallbacks();
             szenarioAusfuehrung();
             this.checkShutterStatus()();
         } else {
-            if (!connecting) {
-                client.disconnect();
+            if (!this.connecting) {
+                this.client.disconnect();
             }
             commandCallbacks.push(szenarioAusfuehrung);
-            if (!connecting) {
-                connecting = true;
-                client.connect();
-            }
+            
+            //if (!this.connecting) {
+                //this.connecting = true;
+                //this.client.connect();
+            //}
+            this.connect();
+            
         }
 
     }
