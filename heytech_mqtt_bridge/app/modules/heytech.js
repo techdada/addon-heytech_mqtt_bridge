@@ -87,7 +87,8 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         // allow use of hostname, if no ip set.
         if (this.config.ip === undefined ) this.config.ip = this.config.host;
 
-        this.log.debug = function (text) { console.debug(new Date() + text); }; //console.log;
+        this.log.debug = function (text) {  }; //console.log;
+        //this.log.debug = function (text) { console.debug(new Date() + text); }; //console.log;
         this.log.info = function (text) { console.info(new Date() + text); };
         this.log.warn = function (text) { console.log(new Date() + text); };
         this.log.error = function (text) { console.log(new Date() + text); }; //function (text) { console.error(new Date() + text); };
@@ -149,10 +150,10 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         };
 
         try {
-            console.log('Connecting to Telnet server...');
+            this.log.info('Connecting to Telnet server...');
             await this.client.connect(params);
             this.connected = true;
-            console.log('Connected to Telnet server');
+            this.log.info('Connected to Telnet server');
             this.startListening();
 
             this.onConnected();
@@ -162,7 +163,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             this.client.socket.on('close', () => this.onDisconnected());
             this.client.socket.on('error', (err) => this.onDisconnected(err));
         } catch (error) {
-            console.error('Telnet connection error:', error);
+            this.log.error('Telnet connection error:', error);
         } finally {
             this.connecting = false;
         }
@@ -262,7 +263,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             this.log.error('⚠️ No active socket connection.');
             return;
         }
-
+        
         this.client.socket.on('data', (data) => {
             const text = data.toString();
             lastStrings += text; // Empfangene Daten speichern
