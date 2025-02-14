@@ -116,7 +116,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         this.buffer = '';
         //this.client = new Telnet(); // telnet-client
         this.socket = new net.Socket(); // telnet-stream
-        this.telnet = new TelnetStream(this.socket); // telnet-stream
+        this.telnet = new TelnetSocket(this.socket); // telnet-stream
         this.connected = false;
         this.connecting = false;
         this.reconnectDelay = 5000;
@@ -152,7 +152,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         try {
             if (!this.socket) {
                 this.socket = new net.Socket();
-                this.telnet = new TelnetStream(this.socket);
+                this.telnet = new TelnetSocket(this.socket);
 
                 this.socket.pipe(this.telnet).pipe(this.socket);
 
