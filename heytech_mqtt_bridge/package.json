@@ -1,6 +1,6 @@
 {
     "name": "HeyTechMQTTServer",
-    "version": "0.0.3",
+    "version": "0.0.4",
     "description": "MQTT mapper Service to control heytech shutter",
     "main": "app.js",
     "scripts": {

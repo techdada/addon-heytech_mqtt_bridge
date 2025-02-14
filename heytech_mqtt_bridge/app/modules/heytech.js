@@ -3,8 +3,11 @@
 
 const _ = require('lodash');
 const EventEmitter = require('events');
-//const {Telnet} = require('telnet-rxjs');
-const {Telnet} = require('telnet-client');
+//const {Telnet} = require('telnet-rxjs'); // telnet-rxjs
+//const {Telnet} = require('telnet-client'); // telnet-client
+const net = require('net');
+const TelnetStream = require("telnet-stream"); // telnet-stream
+
 
 const newLine = String.fromCharCode(13);
 const START_SOP = 'start_sop';
@@ -22,10 +25,10 @@ const ENDE_SMN = 'ende_smn';
 const ENDE_SMN_START_STI = 'ende_smn\r\nstart_sti';
 
 
-let client = null;
+//let client = null; // telnet-rxjs
 
-let connected = false;
-let connecting = false;
+// let connected = false; // telnet-rxjs
+// let connecting = false; // telnet-rxjs
 const commandCallbacks = [];
 let runningCommandCallbacks = false;
 
@@ -111,9 +114,12 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
         //cC = createClient.bind(this);
         this.buffer = '';
-        this.client = new Telnet();
+        //this.client = new Telnet(); // telnet-client
+        this.socket = new net.Socket(); // telnet-stream
+        this.telnet = new TelnetStream(); // telnet-stream
         this.connected = false;
         this.connecting = false;
+        this.reconnectDelay = 5000;
 
 
         //temp variable for processIncomingData
@@ -138,104 +144,128 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
 
     async connect() {
-        if (this.connected || this.connecting) {
-            return; // Falls schon verbunden oder am Verbinden, nichts tun
-        }
+        if (this.connected || this.connecting) return;
 
         this.connecting = true;
-        const params = {
-            host: this.config.ip,
-            port: this.config.port,
-            shellPrompt: false, // Falls dein Server kein bestimmtes Prompt sendet
-            timeout: 5000,
-        };
+        this.log.info("🔄 Connecting to Telnet server...");
 
         try {
-            this.log.info('Connecting to Telnet server...');
-            await this.client.connect(params);
-            this.connected = true;
-            this.log.info('Connected to Telnet server');
-            this.startListening();
+            if (!this.socket) {
+                this.socket = new net.Socket();
+                this.telnet = new TelnetStream();
 
-            this.onConnected();
-            
+                this.socket.pipe(this.telnet).pipe(this.socket);
 
-            // 🔥 Handle disconnect and error events
-            this.client.socket.on('close', () => this.onDisconnected());
-            this.client.socket.on('error', (err) => this.onDisconnected(err));
+                this.telnet.on("data", (data) => {
+                    this.buffer += data.toString();
+                    this.log.debug("📥 Received:", data.toString());
+                    this.processIncomingData();
+                });
+
+                this.socket.on("close", () => this.onDisconnected());
+                this.socket.on("error", (err) => this.onDisconnected(err));
+            }
+
+            this.socket.connect(this.config.port, this.config.ip, () => {
+                this.connected = true;
+                this.log.info("✅ Connected to Telnet server");
+                this.startListening();
+                this.onConnected();
+            });
+
+            if (!this.refreshInterval) {
+                this.refreshInterval = setInterval(() => {
+                    this.sendeRefreshBefehl();
+                }, this.config.refresh || 300000);
+            }
+
         } catch (error) {
-            this.log.error('Telnet connection error:', error);
+            this.log.error("❌ Telnet connection error:", error);
         } finally {
             this.connecting = false;
         }
-
-        // regelmäßig nach aktuellem Status pollen
-        setInterval(() => {
-            this.sendeRefreshBefehl();
-        }, this.config.refresh || 3000000);
     }
 
-    async send(group) {
-        for (const cmd of group) {
-            await this.client.send(cmd);
-            await new Promise(resolve => setTimeout(resolve,50));
+    async disconnect() {
+        if (this.socket) {
+            this.socket.destroy(); // Verbindung sauber schließen
+            this.socket = null;
+            this.telnet = null;
+            this.connected = false;
+            this.log.info("🔌 Disconnected from Telnet server");
         }
     }
 
-    async onConnected() {
-        if (this.config.pin !== '') {
+    send(group) {
+        if (!this.telnet || !this.connected) {
+            this.log.error("⚠️ Not connected. Cannot send commands.");
+            return;
+        }
+    
+        group.forEach(cmd => {
+            this.telnet.write(cmd + "\r\n"); // CRLF für Telnet
+            this.log.debug(`📨 Sent: ${cmd}`);
+        });
+    }
+
+    onConnected() {
+        if (this.config.pin) {
+            this.send(["rsc", newLine, this.config.pin.toString(), newLine]);
+        }
+    
+        const sendInitialCommands = () => {
             this.send([
-                'rsc',newLine,
-                this.config.pin.toString(),newLine
+                newLine, "sss", newLine,
+                "sss", newLine
             ]);
+            if (!readSmo) this.send(["smo", newLine]);
+            this.send(["sdt", newLine]);
+            if (!readSfi) this.send(["sfi", newLine]);
+            if (!readSmn) this.send(["smn", newLine]);
+            if (!readSkd) this.send(["skd", newLine]);
+        };
+    
+        const checkFirstRun = async () => {
+            while (!this.firstRunDone()) {
+                sendInitialCommands();
+                await this.sleep(5000);
+            }
+        };
+    
+        checkFirstRun().then(() => {
+            if (commandCallbacks.length > 0) {
+                this.waitForRunningCommandCallbacks().then(async () => {
+                    runningCommandCallbacks = true;
+                    this.checkShutterStatus()();
+    
+                    for (const commandCallback of commandCallbacks.splice(0)) {
+                        commandCallback();
+                        await this.sleep(500);
+                    }
+    
+                    runningCommandCallbacks = false;
+                });
+            }
+        });
+    }
+    
+    onDisconnected(error = null) {
+        this.log.info("🔴 Disconnected from controller");
+    
+        if (error) {
+            this.log.error("❌ Disconnect due to error:", error);
         }
-        while (!this.firstRunDone()) {
-            this.send([
-                newLine,
-                'sss',newLine,
-                'sss',newLine
-            ]);
-            if (!readSmo) {
-                this.send(['smo',newLine]);
-            }
-            this.send(['sdt',newLine]);
-            if (!readSfi) {
-                this.send(['sfi',newLine]);
-            }
-            if (!readSmn) {
-                this.send(['smn',newLine]);
-            }
-            if (!readSkd) {
-                this.send(['skd',newLine]);
-            }
-            await this.sleep(5000);
-        }
-
-        if (commandCallbacks.length > 0) {
-            await this.waitForRunningCommandCallbacks();
-            runningCommandCallbacks = true;
-            this.checkShutterStatus()();
-
-            let commandCallback;
-            do {
-                commandCallback = commandCallbacks.shift();
-                if (commandCallback) {
-                    commandCallback();
-                    await this.sleep(500);
-                }
-            } while (commandCallbacks.length > 0);
-            runningCommandCallbacks = false;
+    
+        this.connected = false;
+        this.connecting = false;
+    
+        // Falls ein automatischer Reconnect gewünscht ist:
+        if (this.config.autoReconnect) {
+            this.log.info(`🔄 Reconnecting in ${this.config.reconnectDelay || 5000}ms...`);
+            setTimeout(() => this.connect(), this.config.reconnectDelay || 5000);
         }
     }
-
-    onDisconnected(err = '') {
-        this.log.info('Disconnected from controller');
-        if (err !== '') {
-            this.log.error('❌ Disconnect due to error:', error);
-        }
-        connected = false;
-        connecting = false;
-    }
+    
 
     
     firstRunDone() {
@@ -256,116 +286,120 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
 
     startListening() {
-        if (!this.client || !this.client.socket) {
-            this.log.error('⚠️ No active socket connection.');
+        if (!this.telnet) {
+            this.log.error("⚠️ No active Telnet stream.");
             return;
         }
-        
-        this.client.socket.on('data', (data) => {
+    
+        this.telnet.on("data", (data) => {
             const text = data.toString();
             lastStrings += text; // Empfangene Daten speichern
-            this.log.debug('Received data:', text);
+            this.log.debug("📥 Received data:", text);
             this.processIncomingData(text);
         });
     }
+    
 
     processIncomingData(data) {
-
-        this.log.debug('Data: ' + data);
-
-        lastStrings = lastStrings.concat(data);
-        // Beispielhafte Mustererkennung im empfangenen Datenstrom
-        if (!readSmn && lastStrings.indexOf(START_SMN) >= 0 || lastStrings.indexOf(ENDE_SMN) >= 0) {
-            if (lastStrings.includes(ENDE_SMN_START_STI)) { //check end of smn data
-                this.smn = this.smn.concat(data); // erst hier concaten, weil ansonsten das if lastStrings.endsWith nicht mehr stimmt, weil die telnet Verbindung schon wieder was gesendet hat...
+        this.log.debug("📥 Data received: " + data);
+    
+        lastStrings += data; // Datenpuffer aktualisieren
+    
+        // 🏡 Rolladen-Status auslesen
+        if (!readSmn && (lastStrings.includes(START_SMN) || lastStrings.includes(ENDE_SMN))) {
+            if (lastStrings.includes(ENDE_SMN_START_STI)) {
+                this.smn += data; 
                 const channels = this.smn.match(/\d\d,.*,\d,/gm);
                 wOutputs(channels);
-                this.smn = '';
-                lastStrings = '';
-                this.log.debug('Shutters gelesen');
+                this.smn = "";
+                lastStrings = "";
+                this.log.debug("✅ Shutters gelesen");
                 readSmn = true;
             } else {
-                this.smn = this.smn.concat(data);
+                this.smn += data;
             }
-            //console.log("==================\n");
-        } else if (lastStrings.indexOf(START_SOP) >= 0 && lastStrings.indexOf(ENDE_SOP) >= 0) {
-            // SOP  Oeffnungs-Prozent
-            // start_sop0,0,0,0,0,0,0,0,0,0,0,0,0,0,100,100,100,100,100,100,100,100,100,100,100,0,100,100,100,100,100,100,ende_sop
-
-            const regexpResults = lastStrings.match('t_sop([^]+)ende_sop');
-            if (regexpResults && regexpResults.length > 0) {
-                const statusStr = regexpResults[regexpResults.length - 1].replace('t_sop', '').replace(ENDE_SOP, '');
-                const rolladenStatus = statusStr.split(',').slice(0, controllerChannelCount || 32);
-                lastStrings = '';
-                this.log.debug(rolladenStatus);
-                //check rolladenStatus
-                const statusKaputt = rolladenStatus.some(value => isNaN(value));
-                if (!statusKaputt) {
+        }
+    
+        // 🏗 SOP (Öffnungsprozente)
+        else if (lastStrings.includes(START_SOP) && lastStrings.includes(ENDE_SOP)) {
+            const regexpResults = lastStrings.match(/t_sop([^]+?)ende_sop/);
+            if (regexpResults) {
+                const statusStr = regexpResults[1].replace(ENDE_SOP, "");
+                const rolladenStatus = statusStr.split(",").slice(0, controllerChannelCount || 32);
+                lastStrings = "";
+                this.log.debug("🌡️ Rolladenstatus: " + rolladenStatus);
+    
+                if (rolladenStatus.every(value => !isNaN(value))) {
                     this.writeStatus(rolladenStatus);
                     readSop = true;
                 } else {
-                    this.log.error('Rolladenstatus konnte nicht interpretiert werden: ' + statusStr);
+                    this.log.error("❌ Rolladenstatus konnte nicht interpretiert werden: " + statusStr);
                 }
             }
-
-        } else if (lastStrings.indexOf(START_SKD) >= 0 && lastStrings.indexOf(ENDE_SKD) >= 0) {
-            // Klima-Daten
-            // start_skd37,999,999,999,999,19,0,18,19,0,0,0,0,0,37,1,ende_skd
+        }
+    
+        // 🌡 Klimadaten auslesen (SKD)
+        else if (lastStrings.includes(START_SKD) && lastStrings.includes(ENDE_SKD)) {
             const klimaStr = lastStrings.substring(
                 lastStrings.indexOf(START_SKD) + START_SKD.length,
                 lastStrings.indexOf(ENDE_SKD, lastStrings.indexOf(START_SKD))
             );
-            const klimadaten = klimaStr.split(',');
-            lastStrings = '';
-            this.log.debug('Klima gelesen: ' + klimadaten);
+            const klimadaten = klimaStr.split(",");
+            lastStrings = "";
+            this.log.debug("🌡️ Klima gelesen: " + klimadaten);
             this.writeKlima(klimadaten);
             readSkd = true;
-        } else if (lastStrings.indexOf(START_SMO) >= 0 && lastStrings.indexOf(ENDE_SMO) >= 0) {
-            // Model Kennung
+        }
+    
+        // 🔍 Modelkennung (SMO)
+        else if (lastStrings.includes(START_SMO) && lastStrings.includes(ENDE_SMO)) {
             let modelStr = lastStrings.substring(
                 lastStrings.indexOf(START_SMO) + START_SMO.length,
                 lastStrings.indexOf(ENDE_SMO, lastStrings.indexOf(START_SMO))
             );
-            this.log.info('Model: ' + modelStr);
-            modelStr = modelStr.replace('HEYtech ', '');
-            this.updateInventory('controller','model',{
-                'model': modelStr,
-                "status": 0
+            this.log.info("🏷 Model: " + modelStr);
+            modelStr = modelStr.replace("HEYtech ", "");
+            this.updateInventory("controller", "model", {
+                model: modelStr,
+                status: 0
             });
-
-            lastStrings = '';
+    
+            lastStrings = "";
             readSmo = true;
-        } else if (lastStrings.indexOf(START_SMC) >= 0 && lastStrings.indexOf(ENDE_SMC) >= 0) {
-            // Number of channels
+        }
+    
+        // 📡 Anzahl der Kanäle (SMC)
+        else if (lastStrings.includes(START_SMC) && lastStrings.includes(ENDE_SMC)) {
             const noChannelStr = lastStrings.substring(
                 lastStrings.indexOf(START_SMC) + START_SMC.length,
                 lastStrings.indexOf(ENDE_SMC, lastStrings.indexOf(START_SMC))
             );
-            this.log.debug('Number of Channels :' + noChannelStr);
-            //this.extendObject('controller', {'native': {'channels': noChannelStr}});
+            this.log.debug("🎛 Number of Channels: " + noChannelStr);
             controllerChannelCount = Number(noChannelStr);
-            this.updateInventory("controller","numberOfChannels",{
-                "numberOfChannels": noChannelStr
+            this.updateInventory("controller", "numberOfChannels", {
+                numberOfChannels: noChannelStr
             });
-
-            lastStrings = '';
+    
+            lastStrings = "";
             readSmc = true;
-        } else if (lastStrings.indexOf(START_SFI) >= 0 && lastStrings.indexOf(ENDE_SFI) >= 0) {
-            // Software Version
+        }
+    
+        // 💾 Software-Version (SFI)
+        else if (lastStrings.includes(START_SFI) && lastStrings.includes(ENDE_SFI)) {
             const svStr = lastStrings.substring(
                 lastStrings.indexOf(START_SFI) + START_SFI.length,
                 lastStrings.indexOf(ENDE_SFI, lastStrings.indexOf(START_SFI))
             );
-            this.log.info('Software version: ' + svStr);
+            this.log.info("📟 Software version: " + svStr);
             controllerSoftwareVersion = svStr;
-            //this.extendObject('controller', {'native': {'swversion': svStr}});
-            this.updateInventory("controller","version",{
-                "version": controllerSoftwareVersion
+            this.updateInventory("controller", "version", {
+                version: controllerSoftwareVersion
             });
-            lastStrings = '';
+            lastStrings = "";
             readSfi = true;
         }
     }
+    
 
     writeOutputs(data) {
         const that = this;
@@ -944,19 +978,18 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     }
 
     /**
-     * Is called when databases are connected and adapter received configuration.
+     * Called when databases are connected and adapter received configuration.
      */
     onReady() {
-
-        if (this.config.ip === undefined || this.config.ip.length == 0) {
-            this.log.error("Cannot connect - no ip or hostname configured");
+        if (!this.config.ip) {
+            this.log.error("❌ Cannot connect - no IP or hostname configured.");
             return;
         }
-        //cC();
-        //client.connect();
-        //this.client.connect();
+
+        this.log.info("🔄 Adapter is ready, attempting to connect...");
         this.connect();
     }
+
 
     /**
      * Is called when adapter shuts down - callback has to be called under any circumstances!
@@ -1195,67 +1228,49 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     }
 
     async sendeHandsteuerungsBefehl(rolladenId, befehl, terminiereNach = 0) {
-        const runFor = terminiereNach;
-        const runCmd = befehl;
-        var strTermNach = "";
-        
         if (!this.connected) {
-            this.log.error('Connection lost. Reconnecting...');
+            this.log.error("⚠️ Connection lost. Reconnecting...");
             await this.connect();
         }
-        
-        this.log.info("HandsteuerungsAusfuehrung: "+rolladenId+" "+runCmd+" "+String(terminiereNach));
-
-        if (this.config.pin !== '') {
-            const responses = [];
-            for (const cmd of ['rsc',newLine,this.config.pin.toString(),newLine] ) {
-                await this.client.send(cmd);
-                await new Promise(resolve => setTimeout(resolve, 50));
-            }
-        }
-
-        /**
-         * Handsteuerungsbefehl senden und auf Reiherfolge achten, aber Ergebnis gekonnt igonrieren:
-         */
-        this.send([
-            'rhi',
-            newLine,
-            newLine,
-            'rhb',
-            newLine,
-            String(rolladenId),
-            newLine,
-            String(runCmd),
-            newLine,
-            newLine,
-            'rhe',
-            newLine,
-            newLine
-        ]);
-        if (runFor > 100) {
-            await new Promise(resolve => setTimeout(resolve,runFor));
+    
+        this.log.info(`🔄 HandsteuerungsAusführung: ${rolladenId} ${befehl} ${terminiereNach}`);
+    
+        // Falls ein PIN erforderlich ist, zuerst authentifizieren
+        if (this.config.pin) {
             this.send([
-                'rhi',
-                newLine,
-                newLine,
-                'rhb',
-                newLine,
-                String(rolladenId),
-                newLine,
-                'off',
-                newLine,
-                newLine,
-                'rhe',
-                newLine,
-                newLine
+                "rsc", newLine,
+                this.config.pin.toString(), newLine
             ]);
         }
-        
-        this.triggerMessage(rolladenId,befehl);
+    
+        /**
+         * 🏡 Handsteuerungsbefehl senden (Reihenfolge beachten, aber Ergebnis ignorieren)
+         */
+        this.send([
+            "rhi", newLine, newLine,
+            "rhb", newLine,
+            String(rolladenId), newLine,
+            String(befehl), newLine, newLine,
+            "rhe", newLine, newLine
+        ]);
+    
+        // Falls ein Terminierungszeitpunkt gesetzt ist, nach Ablauf "off" senden
+        if (terminiereNach > 100) {
+            setTimeout(() => {
+                this.send([
+                    "rhi", newLine, newLine,
+                    "rhb", newLine,
+                    String(rolladenId), newLine,
+                    "off", newLine, newLine,
+                    "rhe", newLine, newLine
+                ]);
+            }, terminiereNach);
+        }
+    
+        this.triggerMessage(rolladenId, befehl);
         this.checkShutterStatus()();
-        
-
     }
+    
 
     sleep(milliseconds) {
         return new Promise(resolve => {
@@ -1310,67 +1325,65 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     async sendeRefreshBefehl() {
         const refreshBefehl = () => {
             runningCommandCallbacks = true;
-            if (this.config.pin !== '') {
+    
+            if (this.config.pin) {
                 this.send([
-                    'rsc',newLine,
-                    this.config.pin.toString(),newLine
+                    "rsc", newLine,
+                    this.config.pin.toString(), newLine
                 ]);
             }
-            this.send(['skd',newLine]);
+    
+            this.send(["skd", newLine]);
             runningCommandCallbacks = false;
         };
+    
         if (this.connected) {
             await this.waitForRunningCommandCallbacks();
             refreshBefehl();
         } else {
             if (!this.connecting) {
-                this.client.disconnect();
+                this.log.warn("⚠️ Connection lost. Attempting reconnect...");
+                this.disconnect(); // `this.client.disconnect();` wurde durch die Methode ersetzt
+                this.connect();
             }
             commandCallbacks.push(refreshBefehl);
-            //if (!this.connecting) {
-            //    this.connecting = true;
-                //this.client.connect();
-            //}
-            this.connect();
         }
-
     }
-
+    
     async sendeSzenarioBefehl(rolladenId) {
         const szenarioAusfuehrung = () => {
             runningCommandCallbacks = true;
-            if (this.config.pin !== '') {
+    
+            if (this.config.pin) {
                 this.send([
-                    'rsc',newLine,
-                    this.config.pin,newLine
+                    "rsc", newLine,
+                    this.config.pin, newLine
                 ]);
             }
+    
             this.send([
-                'rsa',newLine,
-                rolladenId,newLine,newLine,
-                'sop',newLine,newLine
+                "rsa", newLine,
+                rolladenId, newLine, newLine,
+                "sop", newLine, newLine
             ]);
+    
             runningCommandCallbacks = false;
         };
+    
         if (this.connected) {
             await this.waitForRunningCommandCallbacks();
             szenarioAusfuehrung();
             this.checkShutterStatus()();
         } else {
             if (!this.connecting) {
-                this.client.disconnect();
+                this.log.warn("⚠️ Connection lost. Attempting reconnect...");
+                this.disconnect();
+                this.connect();
             }
             commandCallbacks.push(szenarioAusfuehrung);
-            
-            //if (!this.connecting) {
-                //this.connecting = true;
-                //this.client.connect();
-            //}
-            this.connect();
-            
         }
-
     }
+    
 }
 
 
