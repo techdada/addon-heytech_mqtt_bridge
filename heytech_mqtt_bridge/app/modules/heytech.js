@@ -6,7 +6,7 @@ const EventEmitter = require('events');
 //const {Telnet} = require('telnet-rxjs'); // telnet-rxjs
 //const {Telnet} = require('telnet-client'); // telnet-client
 const net = require('net');
-const TelnetStream = require("telnet-stream"); // telnet-stream
+const {TelnetStream} = require("telnet-stream"); // telnet-stream
 
 
 const newLine = String.fromCharCode(13);
