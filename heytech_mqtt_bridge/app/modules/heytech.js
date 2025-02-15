@@ -6,7 +6,7 @@ const EventEmitter = require('events');
 //const {Telnet} = require('telnet-rxjs'); // telnet-rxjs
 //const {Telnet} = require('telnet-client'); // telnet-client
 const net = require('net');
-({TelnetSocket} = require("telnet-stream")); // telnet-stream
+const TelnetStream = require("telnet-stream");
 
 
 const newLine = String.fromCharCode(13);
@@ -134,45 +134,35 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
     async connect() {
         if (this.connected || this.connecting) return;
-
+    
         this.connecting = true;
         this.log.info("🔄 Connecting to Telnet server...");
-
+    
         try {
-            if (!this.socket) {
-                this.socket = new net.createConnection(this.config.port,this.config.ip);
-                this.telnet = new TelnetSocket(this.socket);
-                
-                this.connected = true;
-                this.log.info("✅ Connected to Telnet server");
-                this.startListening();
-                this.onConnected();
-                
-               // this.socket.pipe(this.telnet).pipe(this.socket);
-
-                this.telnet.on("data", (data) => {
-                    this.buffer += data.toString();
-                    this.log.debug("📥 Received:", data.toString());
-                    this.processIncomingData();
-                });
-
-                this.socket.on("close", () => this.onDisconnected());
-                this.socket.on("error", (err) => this.onDisconnected(err));
-            }
-
+            this.socket = new net.Socket();
+            this.telnet = new TelnetStream.TelnetSocket(this.socket); // ✅ Richtiger Aufruf!
+    
             this.socket.connect(this.config.port, this.config.ip, () => {
                 this.connected = true;
                 this.log.info("✅ Connected to Telnet server");
                 this.startListening();
                 this.onConnected();
             });
-
+    
+            this.telnet.on("data", (data) => {
+                const text = data.toString();
+                this.log.debug("📥 Received:", text);
+                this.processIncomingData(text);
+            });
+    
+            this.socket.on("close", () => this.onDisconnected());
+            this.socket.on("error", (err) => this.onDisconnected(err));
+    
             if (!this.refreshInterval) {
                 this.refreshInterval = setInterval(() => {
                     this.sendeRefreshBefehl();
                 }, this.config.refresh || 300000);
             }
-
         } catch (error) {
             this.log.error("❌ Telnet connection error:", error);
         } finally {
