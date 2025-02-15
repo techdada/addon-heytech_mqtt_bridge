@@ -594,7 +594,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     writeKlima(data) {
         const that = this;
 
-        this.getStates('sensor', function (err, states) {
+        this.getStates('sensor', (err, states) => {
             let st;
             let vAlarm;
             let vWindM;
@@ -659,53 +659,53 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             }
 
             if (vBriAc !== data[0]) {
-                that.updateInventory('sensor','bri_actual',{
+                this.updateInventory('sensor','bri_actual',{
                     name: "Actual brightness",
                     state: parseInt(data[0]),
                     unit: 'Lux'
                 });
-                that.updateInventory('sensor','bri_actual_hey',{
+                this.updateInventory('sensor','bri_actual_hey',{
                     name: "Actual brightness as in Heytech App",
                     state: parseInt(data[0]),
                     unit: 'Lux'
                 });
-                that.updateInventory('sensor','bri_actual_sensor_byte',{
+                this.updateInventory('sensor','bri_actual_sensor_byte',{
                     name: "Actual brightness as byte from sensor",
                     state: parseInt(data[0]),
                     unit: 'Byte'
                 });
-                
+
                 if (!data || !Array.isArray(data) || data.length === 0) {
                     this.log.error("❌ `data` is undefined or empty in `writeKlima()`");
                 } else {
                     const resultLuxCustom = this.calculateLuxValueCustom(data[0]);
                 
                     if (resultLuxCustom > 0) {
-                        that.setState('sensor','bri_actual', resultLuxCustom);
+                        this.setState('sensor','bri_actual', resultLuxCustom);
                     }
 
                     const resultLuxHeytech = this.calculateLuxValueBasedOnHeytech(data[0]);
                     if (resultLuxHeytech > 0) {
-                        that.setState('sensor','bri_actual_hey', resultLuxHeytech);
+                        this.setState('sensor','bri_actual_hey', resultLuxHeytech);
                     }
                 }
 
             }
             if (vBriAv !== data[14]) {
-                that.updateInventory('sensor','bri_average',{
+                this.updateInventory('sensor','bri_average',{
                     name: 'Average brightness',
                     unit: 'lux',
                     state: parseInt(data[14])
                 });
                 const resultLuxHeytech = this.calculateLuxValueBasedOnHeytech(data[14]);
                 if (resultLuxHeytech > 0) {
-                    that.updateInventory('sensor','bri_average_hey',{
+                    this.updateInventory('sensor','bri_average_hey',{
                         name: 'Average brightness as in Heytech App',
                         unit: 'lux',
                         state: resultLuxHeytech
                     });
                 }
-                that.updateInventory('sensor','bri_average_byte',{
+                this.updateInventory('sensor','bri_average_byte',{
                     name: 'Average brightness as byte from sensor',
                     unit: 'Byte',
                     state: parseInt(data[14])
@@ -713,13 +713,13 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
                 const resultLuxCustom = calculateLuxValueCustom(data[14]);
                 if (resultLuxCustom > 0) {
-                    that.setState('sensor','bri_average', resultLuxCustom);
+                    this.setState('sensor','bri_average', resultLuxCustom);
                 }
             }
 
             if (data[1] !== 999) {
                 if (vTi !== data[1] + '.' + data[2]) {
-                    that.updateInventory('sensors','temp_indoor',{
+                    this.updateInventory('sensors','temp_indoor',{
                         name: 'Indoor temperature',
                         type: 'number',
                         unit: '°C',
@@ -727,7 +727,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                     });
                 }
                 if (vTiMin !== data[3]) {
-                    that.updateInventory('sensors','temp_indoor_min',{
+                    this.updateInventory('sensors','temp_indoor_min',{
                         name: 'Indoor temperature minimum',
                         type: 'number',
                         unit: '°C',
@@ -735,7 +735,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                     });
                 }
                 if (vTiMax !== data[4]) {
-                    that.updateInventory('sensors','temp_indoor_max',{
+                    this.updateInventory('sensors','temp_indoor_max',{
                         name: 'Indoor temperature maximum',
                         type: 'number',
                         unit: '°C',
@@ -746,7 +746,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
             if (data[5] !== '999') {
                 if (vTo !== data[5] + '.' + data[6]) {
-                    that.updateInventory('sensors','temp_outdoor',{
+                    this.updateInventory('sensors','temp_outdoor',{
                         name: 'Outdoor temperature',
                         type: 'number',
                         unit: '°C',
@@ -755,7 +755,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
                 }
                 if (vToMin !== data[7]) {
-                    that.updateInventory('sensors','outdoor_temp_min',{
+                    this.updateInventory('sensors','outdoor_temp_min',{
                         name: 'Outdoor temperature minimum',
                         type: 'number',
                         unit: '°C',
@@ -763,7 +763,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                     });
                 }
                 if (vToMax !== data[8]) {
-                    that.updateInventory('sensors','temp_outdoor_max',{
+                    this.updateInventory('sensors','temp_outdoor_max',{
                         name: 'Outdoor temperature maximum',
                         type: 'number',
                         unit: '°C',
@@ -773,7 +773,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             }
 
             if (vWindA !== data[9]) {
-                that.updateInventory('sensors','wind_actual',{
+                this.updateInventory('sensors','wind_actual',{
                     name: 'Actual wind speed',
                     type: 'number',
                     unit: 'km/h',
@@ -781,7 +781,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                 });
             }
             if (vWindM !== data[10]) {
-                that.updateInventory('sensor','wind_maximum',{
+                this.updateInventory('sensor','wind_maximum',{
                     name: 'Maximum wind speed',
                     unit: 'km/h',
                     state: Number(data[10])
@@ -789,14 +789,14 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             }
 
             if (vAlarm !== data[11]) {
-                that.updateInventory('sensor','alarm',{
+                this.updateInventory('sensor','alarm',{
                     name: 'Alarm',
                     state: (data[11] == 1)
                 });
             }
 
             if (vRain !== data[12]) {
-                that.updateInventory('sensor','rain',{
+                this.updateInventory('sensor','rain',{
                     name: 'Rain',
                     state: (data[12] == 1)
                 });
@@ -804,7 +804,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
             if (data[15] !== '999' && data[15] !== '0') {
                 if (vHumidity !== data[15]) {
-                    that.updateInventory('sensor','humidity',{
+                    this.updateInventory('sensor','humidity',{
                         name: 'Humidity',
                         type: 'number',
                         unit: '%',
