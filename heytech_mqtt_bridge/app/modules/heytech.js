@@ -279,7 +279,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         this.telnet.on("data", (data) => {
             const text = data.toString();
             lastStrings += text; // Empfangene Daten speichern
-            this.log.debug("📥 Received data:", lastStrings, "Length: ", lastStrings.length);
+            this.log.debug(`📥 Received data: "${lastStrings}" | Length: ${lastStrings.length}`);
             this.processIncomingData(text);
         });
     }
