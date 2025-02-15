@@ -125,17 +125,6 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         //temp variable for processIncomingData
         this.smn = '';
 
-        // Event-Handling für Verbindungsabbrüche
-        this.client.on('close', () => {
-            this.log.info('Telnet connection closed.');
-            this.connected = false;
-        });
-
-        this.client.on('error', (err) => {
-            this.log.error('Telnet error:', err);
-            this.connected = false;
-        });
-
         const d = new Date();
         start = d.getTime();
 
@@ -171,7 +160,12 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                 this.socket.on("error", (err) => this.onDisconnected(err));
             }
 
-            this.socket.connect(this.config.port, this.config.ip, 
+            this.socket.connect(this.config.port, this.config.ip, () => {
+                this.connected = true;
+                this.log.info("✅ Connected to Telnet server");
+                this.startListening();
+                this.onConnected();
+            });
 
             if (!this.refreshInterval) {
                 this.refreshInterval = setInterval(() => {
