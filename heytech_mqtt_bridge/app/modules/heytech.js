@@ -674,14 +674,20 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                     state: parseInt(data[0]),
                     unit: 'Byte'
                 });
-                const resultLuxCustom = this.calculateLuxValueCustom(data[0]);
-                if (resultLuxCustom > 0) {
-                    that.setState('sensor','bri_actual', resultLuxCustom);
-                }
+                
+                if (!data || !Array.isArray(data) || data.length === 0) {
+                    this.log.error("❌ `data` is undefined or empty in `writeKlima()`");
+                } else {
+                    const resultLuxCustom = this.calculateLuxValueCustom(data[0]);
+                
+                    if (resultLuxCustom > 0) {
+                        that.setState('sensor','bri_actual', resultLuxCustom);
+                    }
 
-                const resultLuxHeytech = this.calculateLuxValueBasedOnHeytech(data[0]);
-                if (resultLuxHeytech > 0) {
-                    that.setState('sensor','bri_actual_hey', resultLuxHeytech);
+                    const resultLuxHeytech = this.calculateLuxValueBasedOnHeytech(data[0]);
+                    if (resultLuxHeytech > 0) {
+                        that.setState('sensor','bri_actual_hey', resultLuxHeytech);
+                    }
                 }
 
             }
