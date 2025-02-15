@@ -286,8 +286,6 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     
 
     processIncomingData(data) {
-        lastStrings += data; // Datenpuffer aktualisieren
-    
         // 🏡 Rolladen-Status auslesen
         if (!readSmn && (lastStrings.includes(START_SMN) || lastStrings.includes(ENDE_SMN))) {
             if (lastStrings.includes(ENDE_SMN_START_STI)) {
