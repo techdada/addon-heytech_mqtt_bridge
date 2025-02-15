@@ -1,6 +1,6 @@
 ---
 name: Heytech MQTT Bridge
-version: 1.0.4
+version: 1.0.4a
 slug: heytech_mqtt_bridge
 description: Konvertiert MQTT Messages in ein proprietäres Protokoll
 arch:
@@ -24,6 +24,7 @@ options:
   mqttpass: "wereulf"
   control_topic_root: "control/heytech"
   state_topic_root: "sensors/heytech"
+  debug: "off"
 schema:
   heyhost: str
   heyport: int
@@ -35,3 +36,4 @@ schema:
   mqttpass: password
   control_topic_root: str
   state_topic_root: str
+  debug: str

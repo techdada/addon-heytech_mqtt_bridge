@@ -5,7 +5,8 @@ const Heytech = require('./modules/heytech.js')({
     "config":{
         "host": process.env.heyhost,
         "port": process.env.heyport,
-        "pin": process.env.heypin
+        "pin": process.env.heypin,
+        "debug": process.env.debug
     }
 });
 
@@ -37,7 +38,8 @@ let mqttHandler = new MqttHandler({
         "pass": process.env.mqttpass,
         "cafile": process.env.mqttcafile,
         "control_topic_root": process.env.control_topic_root,
-        "state_topic_root": process.env.state_topic_root
+        "state_topic_root": process.env.state_topic_root,
+        "debug": process.env.debug
     },
     "handler": Heytech
 });

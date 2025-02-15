@@ -24,6 +24,8 @@ export control_topic_root=$(get_config 'control_topic_root')
 echo "Control topic: ${control_topic_root}."
 export state_topic_root=$(get_config 'state_topic_root')
 echo "State topic: ${state_topic_root}."
+export debug=$(get_config 'debug')
+[ "$debug" == "on" ] && echo "---- DEBUG -----"
 echo "/config directory: "
 ls -l /config
 echo "Starting Heytech MQTT Bridge..."

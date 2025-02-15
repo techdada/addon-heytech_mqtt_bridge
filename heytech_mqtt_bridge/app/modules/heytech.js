@@ -90,9 +90,13 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         // allow use of hostname, if no ip set.
         if (this.config.ip === undefined ) this.config.ip = this.config.host;
 
-        this.log.debug = function (text) {  }; //console.log;
         // IKEA Clock: new Date().toLocaleString("sv-SE");
-        //this.log.debug = function (text) { console.debug(new Date().toLocaleString("sv-SE") + text); }; //console.log;
+        //this.log.debug = function (text) {  }; //console.log;
+        this.log.debug = function (text) { 
+            if (this.config.debug.lower == "on" ) {
+                console.debug(new Date().toLocaleString("sv-SE") + text); 
+            };
+        }
         this.log.info = function (text) { console.info(new Date().toLocaleString("sv-SE") + text); };
         this.log.warn = function (text) { console.log(new Date().toLocaleString("sv-SE") + text); };
         this.log.error = function (text) { console.log(new Date().toLocaleString("sv-SE") + text); }; //function (text) { console.error(new Date() + text); };
