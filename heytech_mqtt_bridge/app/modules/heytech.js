@@ -151,16 +151,11 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             this.socket.connect(this.config.port, this.config.ip, () => {
                 this.connected = true;
                 this.log.info("✅ Connected to Telnet server");
-                this.startListening();
                 this.onConnected();
             });
-    
-            this.telnet.on("data", (data) => {
-                const text = data.toString();
-                this.log.debug("📥 Received:", text);
-                this.processIncomingData(text);
-            });
-    
+            
+            this.startListening();
+            
             this.socket.on("close", () => this.onDisconnected());
             this.socket.on("error", (err) => this.onDisconnected(err));
     
@@ -284,15 +279,13 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         this.telnet.on("data", (data) => {
             const text = data.toString();
             lastStrings += text; // Empfangene Daten speichern
-            this.log.debug("📥 Received data:", text);
+            this.log.debug("📥 Received data:", lastStrings, "Length: ", lastStrings.length);
             this.processIncomingData(text);
         });
     }
     
 
     processIncomingData(data) {
-        this.log.debug("📥 Data received: " + data);
-    
         lastStrings += data; // Datenpuffer aktualisieren
     
         // 🏡 Rolladen-Status auslesen
