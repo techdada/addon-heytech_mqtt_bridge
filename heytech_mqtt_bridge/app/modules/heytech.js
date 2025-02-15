@@ -294,7 +294,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             if (lastStrings.includes(ENDE_SMN_START_STI)) {
                 this.smn += data; 
                 const channels = this.smn.match(/\d\d,.*,\d,/gm);
-                wOutputs(channels);
+                this.writeOutputs(channels);
                 this.smn = "";
                 lastStrings = "";
                 this.log.debug("✅ Shutters gelesen");
