@@ -93,7 +93,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         // IKEA Clock: new Date().toLocaleString("sv-SE");
         //this.log.debug = function (text) {  }; //console.log;
         this.log.debug = function (text) { 
-            if (this.config.debug.lower == "on" ) {
+            if (String(this.config.debug).lower() == "on" ) {
                 console.debug(new Date().toLocaleString("sv-SE") + text); 
             };
         }
