@@ -382,6 +382,105 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     }
     
 
+    calculateLuxValueCustom(data) {
+        let briV = 0;
+        if (data < 19) {
+            briV = data * 1;
+        } else if (data > 19 && data < 29) {
+            briV = data * 4;
+        } else if (data > 29 && data < 39) {
+            briV = data * 8;
+        } else if (data > 39 && data < 49) {
+            briV = data * 15;
+        } else if (data > 49 && data < 59) {
+            briV = data * 22;
+        } else if (data > 59 && data < 69) {
+            briV = data * 30;
+        } else if (data > 69 && data < 79) {
+            briV = data * 40;
+        } else if (data > 79 && data < 89) {
+            briV = data * 50;
+        } else if (data > 89 && data < 99) {
+            briV = data * 64;
+        } else if (data > 99 && data < 109) {
+            briV = data * 80;
+        } else if (data > 109 && data < 119) {
+            briV = data * 100;
+        } else if (data > 119 && data < 129) {
+            briV = data * 117;
+        } else if (data > 129 && data < 139) {
+            briV = data * 138;
+        } else if (data > 139 && data < 149) {
+            briV = data * 157;
+        } else if (data > 149 && data < 159) {
+            briV = data * 173;
+        } else if (data > 159 && data < 169) {
+            briV = data * 194;
+        } else if (data > 169 && data < 179) {
+            briV = data * 212;
+        } else if (data > 179 && data < 189) {
+            briV = data * 228;
+        } else if (data > 189 && data < 199) {
+            briV = data * 247;
+        } else if (data > 199 && data < 209) {
+            briV = data * 265;
+        } else if (data > 209 && data < 219) {
+            briV = data * 286;
+        } else if (data > 219 && data < 229) {
+            briV = data * 305;
+        } else if (data > 229 && data < 239) {
+            briV = data * 322;
+        } else if (data > 239 && data < 249) {
+            briV = data * 342;
+        } else if (data > 249 && data < 259) {
+            briV = data * 360;
+        }
+        return briV;
+    }
+
+
+    calculateLuxValueBasedOnHeytech(wert) {
+        let luxPrefix;
+        let lux;
+    
+        if (wert < 10) {              // - LuxPrefix = 1 --> Lux-Wert n steht für   1 ... 900 Lux
+            luxPrefix = 0;
+            lux = wert;             //  ' - LuxPrefix = 0 --> Lux-Wert n steht für 0,1 ... 0,9 Lux
+        } else if (wert <= 19) {     //  ' - LuxPrefix = 2 --> Lux-Wert n steht für   1 ... 900 kLux
+            luxPrefix = 1;
+            lux = wert - 9;
+        } else if (wert <= 28) {
+            luxPrefix = 1;
+            lux = wert - 20;
+            lux = lux * 10;
+            lux = lux + 20;
+        } else if (wert <= 36) {
+            luxPrefix = 1;
+            lux = wert - 29;
+            lux = lux * 100;
+            lux = lux + 200;
+        } else if (wert <= 136) {
+            luxPrefix = 2;
+            lux = wert - 36;
+        } else {
+            luxPrefix = 2;
+            lux = wert - 137;
+            lux = lux * 10;
+            lux = lux + 110;
+        }
+    
+        let resultLux;
+        if (luxPrefix === 0) {
+            resultLux = 1 - (10 - lux) / 10;
+        } else if (luxPrefix === 1) {
+            resultLux = lux;
+        } else { // LuxPrefix === 2
+            resultLux = lux * 1000;
+        }
+        return resultLux;
+    }
+
+
     writeOutputs(data) {
         const that = this;
         const n = data.length;
@@ -713,104 +812,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
     }
 
-    calculateLuxValueCustom(data) {
-        let briV = 0;
-        if (data < 19) {
-            briV = data * 1;
-        } else if (data > 19 && data < 29) {
-            briV = data * 4;
-        } else if (data > 29 && data < 39) {
-            briV = data * 8;
-        } else if (data > 39 && data < 49) {
-            briV = data * 15;
-        } else if (data > 49 && data < 59) {
-            briV = data * 22;
-        } else if (data > 59 && data < 69) {
-            briV = data * 30;
-        } else if (data > 69 && data < 79) {
-            briV = data * 40;
-        } else if (data > 79 && data < 89) {
-            briV = data * 50;
-        } else if (data > 89 && data < 99) {
-            briV = data * 64;
-        } else if (data > 99 && data < 109) {
-            briV = data * 80;
-        } else if (data > 109 && data < 119) {
-            briV = data * 100;
-        } else if (data > 119 && data < 129) {
-            briV = data * 117;
-        } else if (data > 129 && data < 139) {
-            briV = data * 138;
-        } else if (data > 139 && data < 149) {
-            briV = data * 157;
-        } else if (data > 149 && data < 159) {
-            briV = data * 173;
-        } else if (data > 159 && data < 169) {
-            briV = data * 194;
-        } else if (data > 169 && data < 179) {
-            briV = data * 212;
-        } else if (data > 179 && data < 189) {
-            briV = data * 228;
-        } else if (data > 189 && data < 199) {
-            briV = data * 247;
-        } else if (data > 199 && data < 209) {
-            briV = data * 265;
-        } else if (data > 209 && data < 219) {
-            briV = data * 286;
-        } else if (data > 219 && data < 229) {
-            briV = data * 305;
-        } else if (data > 229 && data < 239) {
-            briV = data * 322;
-        } else if (data > 239 && data < 249) {
-            briV = data * 342;
-        } else if (data > 249 && data < 259) {
-            briV = data * 360;
-        }
-        return briV;
-    };
-
-
-    calculateLuxValueBasedOnHeytech(wert) {
-        let luxPrefix;
-        let lux;
     
-        if (wert < 10) {              // - LuxPrefix = 1 --> Lux-Wert n steht für   1 ... 900 Lux
-            luxPrefix = 0;
-            lux = wert;             //  ' - LuxPrefix = 0 --> Lux-Wert n steht für 0,1 ... 0,9 Lux
-        } else if (wert <= 19) {     //  ' - LuxPrefix = 2 --> Lux-Wert n steht für   1 ... 900 kLux
-            luxPrefix = 1;
-            lux = wert - 9;
-        } else if (wert <= 28) {
-            luxPrefix = 1;
-            lux = wert - 20;
-            lux = lux * 10;
-            lux = lux + 20;
-        } else if (wert <= 36) {
-            luxPrefix = 1;
-            lux = wert - 29;
-            lux = lux * 100;
-            lux = lux + 200;
-        } else if (wert <= 136) {
-            luxPrefix = 2;
-            lux = wert - 36;
-        } else {
-            luxPrefix = 2;
-            lux = wert - 137;
-            lux = lux * 10;
-            lux = lux + 110;
-        }
-    
-        let resultLux;
-        if (luxPrefix === 0) {
-            resultLux = 1 - (10 - lux) / 10;
-        } else if (luxPrefix === 1) {
-            resultLux = lux;
-        } else { // LuxPrefix === 2
-            resultLux = lux * 1000;
-        }
-        return resultLux;
-    };
-
 
     setCommunicator(communicator) {
         this.communicator = communicator;
