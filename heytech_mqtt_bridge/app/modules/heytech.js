@@ -6,7 +6,7 @@ const EventEmitter = require('events');
 //const {Telnet} = require('telnet-rxjs'); // telnet-rxjs
 //const {Telnet} = require('telnet-client'); // telnet-client
 const net = require('net');
-const {TelnetStream} = require("telnet-stream"); // telnet-stream
+({TelnetSocket} = require("telnet-stream")); // telnet-stream
 
 
 const newLine = String.fromCharCode(13);
@@ -115,8 +115,8 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         //cC = createClient.bind(this);
         this.buffer = '';
         //this.client = new Telnet(); // telnet-client
-        this.socket = new net.Socket(); // telnet-stream
-        this.telnet = new TelnetSocket(this.socket); // telnet-stream
+        this.socket = null; // telnet-stream
+        this.telnet = null; // telnet-stream
         this.connected = false;
         this.connecting = false;
         this.reconnectDelay = 5000;
@@ -151,10 +151,15 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
         try {
             if (!this.socket) {
-                this.socket = new net.Socket();
+                this.socket = new net.createConnection(this.config.port,this.config.ip);
                 this.telnet = new TelnetSocket(this.socket);
-
-                this.socket.pipe(this.telnet).pipe(this.socket);
+                
+                this.connected = true;
+                this.log.info("✅ Connected to Telnet server");
+                this.startListening();
+                this.onConnected();
+                
+               // this.socket.pipe(this.telnet).pipe(this.socket);
 
                 this.telnet.on("data", (data) => {
                     this.buffer += data.toString();
@@ -166,12 +171,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                 this.socket.on("error", (err) => this.onDisconnected(err));
             }
 
-            this.socket.connect(this.config.port, this.config.ip, () => {
-                this.connected = true;
-                this.log.info("✅ Connected to Telnet server");
-                this.startListening();
-                this.onConnected();
-            });
+            this.socket.connect(this.config.port, this.config.ip, 
 
             if (!this.refreshInterval) {
                 this.refreshInterval = setInterval(() => {
