@@ -712,7 +712,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                     state: parseInt(data[14])
                 });
 
-                const resultLuxCustom = calculateLuxValueCustom(data[14]);
+                const resultLuxCustom = this.calculateLuxValueCustom(data[14]);
                 if (resultLuxCustom > 0) {
                     this.setState('sensor','bri_average', resultLuxCustom);
                 }
