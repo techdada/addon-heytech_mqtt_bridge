@@ -1058,8 +1058,8 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
 
 
-            if (client === null) {
-                cC();
+            if (!this.connected) {
+                this.connect();
             } else {
                 if (isDown) {
                     if (isShutter) {
