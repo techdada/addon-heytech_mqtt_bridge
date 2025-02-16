@@ -280,7 +280,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             const text = data.toString();
             lastStrings += text; // Empfangene Daten speichern
             if (lastStrings.length > 2048) lastStrings = ''; // Notfall reset
-            this.log.debug(`📥 Received data: "${text}" | Total Length: ${lastStrings.length}`);
+            //this.log.debug(`📥 Received data: "${text}" | Total Length: ${lastStrings.length}`);
             this.processIncomingData(text);
         });
     }
