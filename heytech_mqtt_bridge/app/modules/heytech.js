@@ -279,7 +279,10 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         this.telnet.on("data", (data) => {
             const text = data.toString();
             lastStrings += text; // Empfangene Daten speichern
-            if (lastStrings.length > 2048) lastStrings = ''; // Notfall reset
+            if (lastStrings.length > 2048) {
+                lastStrings = ''; // Notfall reset
+                this.log.debug("Datenstream reset bei ${text}");
+            }
             //this.log.debug(`📥 Received data: "${text}" | Total Length: ${lastStrings.length}`);
             this.processIncomingData(text);
         });
@@ -1228,8 +1231,10 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         // Falls ein PIN erforderlich ist, zuerst authentifizieren
         if (this.config.pin) {
             this.send([
-                "rsc", newLine,
-                this.config.pin.toString(), newLine
+                //"rsc", newLine,
+                //this.config.pin.toString(), newLine
+                "rsc",
+                this.config.pin.toString(),
             ]);
         }
     
