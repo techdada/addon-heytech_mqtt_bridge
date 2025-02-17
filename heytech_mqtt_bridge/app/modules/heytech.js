@@ -206,6 +206,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             if (!readSmo) this.send(["smo", newLine]);
             this.send(["sdt", newLine]);
             if (!readSfi) this.send(["sfi", newLine]);
+            if (!readSmc) this.send(["smc", newLine]);
             if (!readSmn) this.send(["smn", newLine]);
             if (!readSkd) this.send(["skd", newLine]);
         };
@@ -1231,10 +1232,10 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         // Falls ein PIN erforderlich ist, zuerst authentifizieren
         if (this.config.pin) {
             this.send([
-                //"rsc", newLine,
-                //this.config.pin.toString(), newLine
-                "rsc",
-                this.config.pin.toString(),
+                "rsc", newLine,
+                this.config.pin.toString(), newLine
+                //"rsc",
+                //this.config.pin.toString(),
             ]);
         }
     
