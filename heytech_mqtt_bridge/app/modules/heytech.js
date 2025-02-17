@@ -1224,7 +1224,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         }
     
         this.log.info(`🔄 HandsteuerungsAusführung: ${rolladenId} ${befehl} ${terminiereNach}`);
-    
+        runningCommandCallbacks = true;
         // Falls ein PIN erforderlich ist, zuerst authentifizieren
         if (this.config.pin) {
             this.send([
@@ -1258,7 +1258,20 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         }
     
         this.triggerMessage(rolladenId, befehl);
-        this.checkShutterStatus()();
+        if (this.connected) {
+            await this.waitForRunningCommandCallbacks();
+            handsteuerungAusfuehrung();
+            this.checkShutterStatus()();
+        } else {
+            if (!this.connecting) {
+                this.disconnect();
+            }
+            commandCallbacks.push(handsteuerungAusfuehrung);
+            if (!connecting) {
+                connecting = true;
+                client.connect();
+            }
+        }
     }
     
 
