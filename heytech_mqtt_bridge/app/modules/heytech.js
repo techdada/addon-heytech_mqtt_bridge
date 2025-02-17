@@ -260,10 +260,10 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         if (!result) {
             this.log.debug('read: Sop:' + readSop + ' Skd: ' + readSkd + ' Smo: ' + readSmo + ' Smc: ' + readSmc + ' Sfi: ' + readSfi + ' Smn: ' + readSmn);
         } else {
-            this.log.debug(that.config.shutter);
-            this.log.debug(that.config.group);
-            this.log.debug(that.config.scene);
-            this.log.debug(that.config.sensor);
+            this.log.debug(this.config.shutter);
+            this.log.debug(this.config.group);
+            this.log.debug(this.config.scene);
+            this.log.debug(this.config.sensor);
             this.triggerSensorMessage();
             this.triggerShutterMessage();
         }
