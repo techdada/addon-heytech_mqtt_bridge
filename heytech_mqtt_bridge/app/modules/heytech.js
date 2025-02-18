@@ -1232,10 +1232,10 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         // Falls ein PIN erforderlich ist, zuerst authentifizieren
         if (this.config.pin) {
             this.send([
-                "rsc", newLine,
-                this.config.pin.toString(), newLine
-                //"rsc",
-                //this.config.pin.toString(),
+                //"rsc", newLine,
+                //this.config.pin.toString(), newLine
+                "rsc",
+                this.config.pin.toString(),
             ]);
         }
     
@@ -1243,22 +1243,34 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
          * 🏡 Handsteuerungsbefehl senden (Reihenfolge beachten, aber Ergebnis ignorieren)
          */
         this.send([
-            "rhi", newLine, newLine,
+/*            "rhi", newLine, newLine,
             "rhb", newLine,
             String(rolladenId), newLine,
             String(befehl), newLine, newLine,
-            "rhe", newLine, newLine
+            "rhe", newLine, newLine */
+            "rhi", newLine,
+            "rhb", 
+            String(rolladenId), 
+            String(befehl), newLine, 
+            "rhe", newLine
+  
         ]);
+
     
         // Falls ein Terminierungszeitpunkt gesetzt ist, nach Ablauf "off" senden
         if (terminiereNach > 100) {
             setTimeout(() => {
                 this.send([
-                    "rhi", newLine, newLine,
+                    /*"rhi", newLine, newLine,
                     "rhb", newLine,
                     String(rolladenId), newLine,
                     "off", newLine, newLine,
-                    "rhe", newLine, newLine
+                    "rhe", newLine, newLine*/
+                    "rhi", newLine, 
+                    "rhb", 
+                    String(rolladenId),
+                    "off", newLine,
+                    "rhe", newLine
                 ]);
             }, terminiereNach);
         }
