@@ -181,34 +181,35 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         }
     }
 
-    send(group) {
+    send(cmd) {
         if (!this.telnet || !this.connected) {
             this.log.error("⚠️ Not connected. Cannot send commands.");
             return;
         }
-    
-        group.forEach(cmd => {
-            this.telnet.write(cmd + "\r\n"); // CRLF für Telnet
-            this.log.debug(`📨 Sent: ${cmd}`);
-        });
+
+        if (cmd.isArray()) cmd = cmd.join('');
+        
+        this.telnet.write(cmd); // CRLF für Telnet
+        cmd = cmd.replace('\r','\r\n').replace('\r\r','\r');
+        this.log.debug(`📨 Sent: ${cmd}`);
     }
 
     onConnected() {
         if (this.config.pin) {
-            this.send(["rsc", newLine, this.config.pin.toString(), newLine]);
+            this.send([
+                "rsc\r",
+                String(this.config.pin)+"\r"
+            ]);
         }
     
         const sendInitialCommands = () => {
-            this.send([
-                newLine, "sss", newLine,
-                "sss", newLine
-            ]);
-            if (!readSmo) this.send(["smo", newLine]);
-            this.send(["sdt", newLine]);
-            if (!readSfi) this.send(["sfi", newLine]);
-            if (!readSmc) this.send(["smc", newLine]);
-            if (!readSmn) this.send(["smn", newLine]);
-            if (!readSkd) this.send(["skd", newLine]);
+            this.send("\rsss\rsss\r");
+            if (!readSmo) this.send("smo\r");
+            this.send("sdt\r");
+            if (!readSfi) this.send("sfi\r");
+            if (!readSmc) this.send("smc\r");
+            if (!readSmn) this.send("smn\r");
+            if (!readSkd) this.send("skd\r");
         };
     
         const checkFirstRun = async () => {
@@ -1190,7 +1191,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             const intervalID = setInterval(() => {
                 //client.send('sop');
                 //client.send(newLine);
-                this.send(['sop',newLine]);
+                this.send("sop\r");
             }, 5000);
             checkShutterStatusClearTimeoutHandler = setTimeout(() => {
                 clearInterval(intervalID);
@@ -1231,29 +1232,18 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         runningCommandCallbacks = true;
         // Falls ein PIN erforderlich ist, zuerst authentifizieren
         if (this.config.pin) {
-            this.send([
-                //"rsc", newLine,
-                //this.config.pin.toString(), newLine
-                "rsc",
-                this.config.pin.toString(),
-            ]);
+            this.send(`rsc\r{String(this.config.pin)}\r`);
         }
     
         /**
          * 🏡 Handsteuerungsbefehl senden (Reihenfolge beachten, aber Ergebnis ignorieren)
          */
         this.send([
-/*            "rhi", newLine, newLine,
-            "rhb", newLine,
-            String(rolladenId), newLine,
-            String(befehl), newLine, newLine,
-            "rhe", newLine, newLine */
-            "rhi", newLine,
-            "rhb", 
-            String(rolladenId), 
-            String(befehl), newLine, 
-            "rhe", newLine
-  
+            "rhi\r\r" ,
+            "rhb\r",
+            String(rolladenId) + "\r",
+            String(befehl) + "\r\r",
+            "rhe\r\r"
         ]);
 
     
@@ -1261,16 +1251,11 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         if (terminiereNach > 100) {
             setTimeout(() => {
                 this.send([
-                    /*"rhi", newLine, newLine,
-                    "rhb", newLine,
-                    String(rolladenId), newLine,
-                    "off", newLine, newLine,
-                    "rhe", newLine, newLine*/
-                    "rhi", newLine, 
-                    "rhb", 
-                    String(rolladenId),
-                    "off", newLine,
-                    "rhe", newLine
+                    "rhi\r\r",
+                    "rhb\r",
+                    String(rolladenId), "\r",
+                    "off\r\r",
+                    "rhe\r\r"
                 ]);
             }, terminiereNach);
         }
@@ -1349,12 +1334,12 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     
             if (this.config.pin) {
                 this.send([
-                    "rsc", newLine,
-                    this.config.pin.toString(), newLine
+                    "rsc\r",
+                    String(this.config.pin) + "\r"
                 ]);
             }
     
-            this.send(["skd", newLine]);
+            this.send("skd\r");
             runningCommandCallbacks = false;
         };
     
@@ -1377,15 +1362,15 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     
             if (this.config.pin) {
                 this.send([
-                    "rsc", newLine,
-                    this.config.pin, newLine
+                    "rsc\r",
+                    String(this.config.pin)+"\r"
                 ]);
             }
     
             this.send([
-                "rsa", newLine,
-                rolladenId, newLine, newLine,
-                "sop", newLine, newLine
+                "rsa\r",
+                String(rolladenId)+"\r\r",
+                "sop\r\r"
             ]);
     
             runningCommandCallbacks = false;
