@@ -187,7 +187,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             return;
         }
 
-        if (cmd.isArray()) cmd = cmd.join('');
+        if (Array.isArray(cmd)) cmd = cmd.join('');
         
         this.telnet.write(cmd); // CRLF für Telnet
         cmd = cmd.replace('\r','\r\n').replace('\r\r','\r');
