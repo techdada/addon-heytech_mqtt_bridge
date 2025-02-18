@@ -190,7 +190,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         if (Array.isArray(cmd)) cmd = cmd.join('');
         
         this.telnet.write(cmd); // CRLF für Telnet
-        cmd = cmd.replace('\r','\r\n').replace('\r\r','\r');
+        cmd = cmd.replace('\r','\r\n');
         this.log.debug(`📨 Sent: ${cmd}`);
     }
 
@@ -1232,7 +1232,10 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         runningCommandCallbacks = true;
         // Falls ein PIN erforderlich ist, zuerst authentifizieren
         if (this.config.pin) {
-            this.send(`rsc\r{String(this.config.pin)}\r`);
+            this.send([ 
+                "rsc\r",
+                String(this.config.pin)+"\r"
+            ]);
         }
     
         /**
