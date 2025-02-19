@@ -181,7 +181,8 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         }
     }
 
-    send(cmd) {
+    sendold(cmd) {
+        
         if (!this.telnet || !this.connected) {
             this.log.error("⚠️ Not connected. Cannot send commands.");
             return;
@@ -192,6 +193,26 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         this.telnet.write(cmd); // CRLF für Telnet
         cmd = cmd.replace('\r','\r\n');
         this.log.debug(`📨 Sent: ${cmd}`);
+    }
+
+    send(cmd) {
+        if (!this.connected) {
+            this.log.warn("⚠️ Verbindung verloren – starte Reconnect im Hintergrund...");
+    
+            if (!this.connecting) {
+                this.connect(); // 🔥 Verbindung asynchron wiederherstellen
+            }
+    
+            // 🔥 Speichere die Befehle in einer Queue für später
+            this.commandCallbacks = this.pendingCommands || [];
+            this.pendingCommands.push(commands);
+            return;
+        }
+    
+        if (Array.isArray(cmd)) cmd = cmd.join('');
+        // 🔥 Falls Verbindung steht, direkt senden
+        this.telnet.write(cmd);
+        this.log.debug(`📨 Sent: ${cmd}`)
     }
 
     onConnected() {
@@ -1225,10 +1246,15 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     async sendeHandsteuerungsBefehl(rolladenId, befehl, terminiereNach = 0) {
         if (!this.connected) {
             this.log.error("⚠️ Connection lost. Reconnecting...");
-            await this.connect();
+            if (!this.connecting) 
+                await this.connect();
         }
     
         this.log.info(`🔄 HandsteuerungsAusführung: ${rolladenId} ${befehl} ${terminiereNach}`);
+
+        // 🔥 Warten, bis laufende Befehle abgearbeitet sind
+        await this.waitForRunningCommandCallbacks();
+
         runningCommandCallbacks = true;
         // Falls ein PIN erforderlich ist, zuerst authentifizieren
         if (this.config.pin) {
@@ -1264,20 +1290,8 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         }
     
         this.triggerMessage(rolladenId, befehl);
-        if (this.connected) {
-            await this.waitForRunningCommandCallbacks();
-            handsteuerungAusfuehrung();
-            this.checkShutterStatus()();
-        } else {
-            if (!this.connecting) {
-                this.disconnect();
-            }
-            commandCallbacks.push(handsteuerungAusfuehrung);
-            if (!connecting) {
-                connecting = true;
-                client.connect();
-            }
-        }
+        this.checkShutterStatus()();
+        
     }
     
 
