@@ -158,6 +158,25 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             
             this.socket.on("close", () => this.onDisconnected());
             this.socket.on("error", (err) => this.onDisconnected(err));
+
+
+            // 🐍 Schlange abarbeiten
+            if (commandCallbacks.length > 0) {
+                await this.waitForRunningCommandCallbacks();
+                runningCommandCallbacks = true;
+                this.checkShutterStatus()();
+
+                let commandCallback;
+                do {
+                    commandCallback = commandCallbacks.shift();
+                    if (commandCallback) {
+                        commandCallback();
+                        await this.sleep(500);
+                    }
+                } while (commandCallbacks.length > 0);
+                runningCommandCallbacks = false;
+            }
+
     
             if (!this.refreshInterval) {
                 this.refreshInterval = setInterval(() => {
@@ -196,19 +215,6 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     }
 
     send(cmd) {
-        if (!this.connected) {
-            this.log.warn("⚠️ Verbindung verloren – starte Reconnect im Hintergrund...");
-    
-            if (!this.connecting) {
-                this.connect(); // 🔥 Verbindung asynchron wiederherstellen
-            }
-    
-            // 🔥 Speichere die Befehle in einer Queue für später
-            this.commandCallbacks = this.pendingCommands || [];
-            this.pendingCommands.push(commands);
-            return;
-        }
-    
         if (Array.isArray(cmd)) cmd = cmd.join('');
         // 🔥 Falls Verbindung steht, direkt senden
         this.telnet.write(cmd);
@@ -1244,54 +1250,38 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     }
 
     async sendeHandsteuerungsBefehl(rolladenId, befehl, terminiereNach = 0) {
-        if (!this.connected) {
-            this.log.error("⚠️ Connection lost. Reconnecting...");
-            if (!this.connecting) 
-                await this.connect();
-        }
-    
-        this.log.info(`🔄 HandsteuerungsAusführung: ${rolladenId} ${befehl} ${terminiereNach}`);
-
-        // 🔥 Warten, bis laufende Befehle abgearbeitet sind
-        await this.waitForRunningCommandCallbacks();
-
-        runningCommandCallbacks = true;
-        // Falls ein PIN erforderlich ist, zuerst authentifizieren
-        if (this.config.pin) {
-            this.send([ 
-                "rsc\r",
-                String(this.config.pin)+"\r"
-            ]);
-        }
-    
-        /**
-         * 🏡 Handsteuerungsbefehl senden (Reihenfolge beachten, aber Ergebnis ignorieren)
-         */
-        this.send([
-            "rhi\r\r" ,
-            "rhb\r",
-            String(rolladenId) + "\r",
-            String(befehl) + "\r\r",
-            "rhe\r\r"
-        ]);
-
-    
-        // Falls ein Terminierungszeitpunkt gesetzt ist, nach Ablauf "off" senden
-        if (terminiereNach > 100) {
-            setTimeout(() => {
-                this.send([
-                    "rhi\r\r",
-                    "rhb\r",
-                    String(rolladenId), "\r",
-                    "off\r\r",
-                    "rhe\r\r"
+        const handsteuerungAusfuehrung = () => {
+            runningCommandCallbacks = true;
+            if (this.config.pin !== '') {
+                client.send([
+                    "rsc\r",
+                    this.config.pin.toString(),
+                    "\r"
                 ]);
-            }, terminiereNach);
+            }
+            client.send([
+                "rhi\r\r",
+                "rhb\r",
+                String(rolladenId),
+                "\r",
+                String(befehl),
+                "\r\r",
+                "rhe\r\r"
+            ]);
+            runningCommandCallbacks = false;
+        };
+        if (this.connected) {
+            await this.waitForRunningCommandCallbacks();
+            handsteuerungAusfuehrung();
+            this.checkShutterStatus()();
+        } else {
+            /*if (!this.connecting) {
+                client.disconnect();
+            }*/
+            commandCallbacks.push(handsteuerungAusfuehrung);
+            await this.connect();
         }
-    
-        this.triggerMessage(rolladenId, befehl);
-        this.checkShutterStatus()();
-        
+
     }
     
 
