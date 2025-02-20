@@ -1250,23 +1250,26 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     async sendeHandsteuerungsBefehl(rolladenId, befehl, terminiereNach = 0) {
         const handsteuerungAusfuehrung = () => {
             runningCommandCallbacks = true;
-            if (this.config.pin !== '') {
+            try {
+                if (this.config.pin !== '') {
+                    this.send([
+                        "rsc\r",
+                        this.config.pin.toString(),
+                        "\r"
+                    ]);
+                }
                 this.send([
-                    "rsc\r",
-                    this.config.pin.toString(),
-                    "\r"
+                    "rhi\r\r",
+                    "rhb\r",
+                    String(rolladenId),
+                    "\r",
+                    String(befehl),
+                    "\r\r",
+                    "rhe\r\r"
                 ]);
+            } finally {
+                runningCommandCallbacks = false;
             }
-            this.send([
-                "rhi\r\r",
-                "rhb\r",
-                String(rolladenId),
-                "\r",
-                String(befehl),
-                "\r\r",
-                "rhe\r\r"
-            ]);
-            runningCommandCallbacks = false;
         };
         if (this.connected) {
             await this.waitForRunningCommandCallbacks();
