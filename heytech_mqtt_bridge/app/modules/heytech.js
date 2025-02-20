@@ -1216,8 +1216,6 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     checkShutterStatus() {
         return _.debounce(async () => {
             const intervalID = setInterval(() => {
-                //client.send('sop');
-                //client.send(newLine);
                 this.send("sop\r");
             }, 5000);
             checkShutterStatusClearTimeoutHandler = setTimeout(() => {
@@ -1253,13 +1251,13 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         const handsteuerungAusfuehrung = () => {
             runningCommandCallbacks = true;
             if (this.config.pin !== '') {
-                client.send([
+                this.send([
                     "rsc\r",
                     this.config.pin.toString(),
                     "\r"
                 ]);
             }
-            client.send([
+            this.send([
                 "rhi\r\r",
                 "rhb\r",
                 String(rolladenId),
