@@ -230,6 +230,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         }
     
         const sendInitialCommands = () => {
+            runningCommandCallbacks = true;
             this.send("\rsss\rsss\r");
             if (!readSmo) this.send("smo\r");
             this.send("sdt\r");
@@ -237,6 +238,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             if (!readSmc) this.send("smc\r");
             if (!readSmn) this.send("smn\r");
             if (!readSkd) this.send("skd\r");
+            runningCommandCallbacks = false;
         };
     
         const checkFirstRun = async () => {
