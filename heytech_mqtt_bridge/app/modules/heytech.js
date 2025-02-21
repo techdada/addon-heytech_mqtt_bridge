@@ -228,6 +228,20 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                 String(this.config.pin)+"\r"
             ]);
         }
+
+        if (commandCallbacks.length > 0) {
+            this.waitForRunningCommandCallbacks().then(async () => {
+                runningCommandCallbacks = true;
+                this.checkShutterStatus()();
+
+                for (const commandCallback of commandCallbacks.splice(0)) {
+                    commandCallback();
+                    await this.sleep(500);
+                }
+
+                runningCommandCallbacks = false;
+            });
+        }
     
         const sendInitialCommands = () => {
             runningCommandCallbacks = true;
@@ -249,19 +263,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         };
     
         checkFirstRun().then(() => {
-            if (commandCallbacks.length > 0) {
-                this.waitForRunningCommandCallbacks().then(async () => {
-                    runningCommandCallbacks = true;
-                    this.checkShutterStatus()();
-    
-                    for (const commandCallback of commandCallbacks.splice(0)) {
-                        commandCallback();
-                        await this.sleep(500);
-                    }
-    
-                    runningCommandCallbacks = false;
-                });
-            }
+            
         });
     }
     
