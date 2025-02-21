@@ -217,7 +217,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     send(cmd) {
         if (Array.isArray(cmd)) cmd = cmd.join('');
         // 🔥 Falls Verbindung steht, direkt senden
-        await this.telnet.write(cmd);
+        this.telnet.write(cmd);
         this.log.debug(`📨 Sent: ${cmd}`)
     }
 
