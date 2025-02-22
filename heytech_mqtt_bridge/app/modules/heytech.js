@@ -208,7 +208,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         
         // 🐍 Schlange abarbeiten
         if (commandCallbacks.length > 0) {
-            await this.waitForRunningCommandCallbacks().then(async () => {
+            this.waitForRunningCommandCallbacks().then(async () => {
                 runningCommandCallbacks = true;
                 this.checkShutterStatus()();
 
@@ -225,7 +225,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
         const sendInitialCommands = () => {
             runningCommandCallbacks = true;
-            
+
             this.log.debug("Send initial commands");
             if (this.config.pin) {
                 this.send([
