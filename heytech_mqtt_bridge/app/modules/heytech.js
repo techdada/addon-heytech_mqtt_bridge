@@ -221,7 +221,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                 runningCommandCallbacks = false;
             });
         } else {
-            this.debug.log('No waiting callbacks');
+            this.log.debug('No waiting callbacks');
         }
         
 
