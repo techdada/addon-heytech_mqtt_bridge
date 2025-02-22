@@ -1244,6 +1244,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         };
         if (this.connected) {
             await this.waitForRunningCommandCallbacks();
+            this.log.debug("sendeHandsteuerungsBefehl Rolladen "+rolladenId+" "+befehl);
             handsteuerungAusfuehrung();
             this.checkShutterStatus()();
         } else {
@@ -1251,7 +1252,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                 this.disconnect();
             }
             commandCallbacks.push(handsteuerungAusfuehrung);
-            this.log.debug("handsteuerungsAusführung für später gemerkt ("+commandCallbacks.length+" wartend)");
+            this.log.debug("handsteuerungsAusführung gemerkt ("+commandCallbacks.length+" wartend)");
             
             await this.connect();
         }
