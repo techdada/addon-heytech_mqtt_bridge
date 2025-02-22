@@ -154,30 +154,20 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                 this.onConnected();
             });
             
-            this.startListening();
-            
+            this.telnet.on("data", (data) => {
+                const text = data.toString();
+                lastStrings += text; // Empfangene Daten speichern
+                if (lastStrings.length > 2048) {
+                    lastStrings = ''; // Notfall reset
+                    this.log.debug("Datenstream reset bei ${text}");
+                }
+                //this.log.debug(`📥 Received data: "${text}" | Total Length: ${lastStrings.length}`);
+                this.processIncomingData(text);
+            });
             this.socket.on("close", () => this.onDisconnected());
             this.socket.on("error", (err) => this.onDisconnected(err));
 
 
-            // 🐍 Schlange abarbeiten
-            if (commandCallbacks.length > 0) {
-                await this.waitForRunningCommandCallbacks();
-                runningCommandCallbacks = true;
-                this.checkShutterStatus()();
-
-                let commandCallback;
-                do {
-                    commandCallback = commandCallbacks.shift();
-                    if (commandCallback) {
-                        commandCallback();
-                        await this.sleep(500);
-                    }
-                } while (commandCallbacks.length > 0);
-                runningCommandCallbacks = false;
-            }
-
-    
             if (!this.refreshInterval) {
                 this.refreshInterval = setInterval(() => {
                     this.sendeRefreshBefehl();
@@ -200,7 +190,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         }
     }
 
-    sendold(cmd) {
+    send(cmd) {
         
         if (!this.telnet || !this.connected) {
             this.log.error("⚠️ Not connected. Cannot send commands.");
@@ -214,27 +204,16 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         this.log.debug(`📨 Sent: ${cmd}`);
     }
 
-    send(cmd) {
-        if (Array.isArray(cmd)) cmd = cmd.join('');
-        // 🔥 Falls Verbindung steht, direkt senden
-        this.telnet.write(cmd);
-        this.log.debug(`📨 Sent: ${cmd}`)
-    }
-
     onConnected() {
-        if (this.config.pin) {
-            this.send([
-                "rsc\r",
-                String(this.config.pin)+"\r"
-            ]);
-        }
-
+        
+        // 🐍 Schlange abarbeiten
         if (commandCallbacks.length > 0) {
-            this.waitForRunningCommandCallbacks().then(async () => {
+            await this.waitForRunningCommandCallbacks().then(async () => {
                 runningCommandCallbacks = true;
                 this.checkShutterStatus()();
 
                 for (const commandCallback of commandCallbacks.splice(0)) {
+                    this.log.debug(" CommandCallback" + commandCallback.name);
                     commandCallback();
                     await this.sleep(500);
                 }
@@ -242,9 +221,19 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                 runningCommandCallbacks = false;
             });
         }
-    
+        
+
         const sendInitialCommands = () => {
             runningCommandCallbacks = true;
+            
+            this.log.debug("Send initial commands");
+            if (this.config.pin) {
+                this.send([
+                    "rsc\r",
+                    String(this.config.pin)+"\r"
+                ]);
+            }
+    
             this.send("\rsss\rsss\r");
             if (!readSmo) this.send("smo\r");
             this.send("sdt\r");
@@ -262,9 +251,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             }
         };
     
-        checkFirstRun().then(() => {
-            
-        });
+        checkFirstRun();
     }
     
     onDisconnected(error = null) {
@@ -284,43 +271,21 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         }
     }
     
-
-    
     firstRunDone() {
         const result = readSop && readSkd && readSmo && readSmc && readSfi && readSmn;
         this.log.debug('First run done?: '+(result));
         if (!result) {
             this.log.debug('read: Sop:' + readSop + ' Skd: ' + readSkd + ' Smo: ' + readSmo + ' Smc: ' + readSmc + ' Sfi: ' + readSfi + ' Smn: ' + readSmn);
         } else {
-            this.log.debug(this.config.shutter);
-            this.log.debug(this.config.group);
-            this.log.debug(this.config.scene);
-            this.log.debug(this.config.sensor);
+            this.log.debug(JSON.stringify(this.config.shutter));
+            this.log.debug(JSON.stringify(this.config.group));
+            this.log.debug(JSON.stringify(this.config.scene));
+            this.log.debug(JSON.stringify(this.config.sensor));
             this.triggerSensorMessage();
             this.triggerShutterMessage();
         }
         return result;
     }
-
-
-    startListening() {
-        if (!this.telnet) {
-            this.log.error("⚠️ No active Telnet stream.");
-            return;
-        }
-    
-        this.telnet.on("data", (data) => {
-            const text = data.toString();
-            lastStrings += text; // Empfangene Daten speichern
-            if (lastStrings.length > 2048) {
-                lastStrings = ''; // Notfall reset
-                this.log.debug("Datenstream reset bei ${text}");
-            }
-            //this.log.debug(`📥 Received data: "${text}" | Total Length: ${lastStrings.length}`);
-            this.processIncomingData(text);
-        });
-    }
-    
 
     processIncomingData(data) {
         // 🏡 Rolladen-Status auslesen
