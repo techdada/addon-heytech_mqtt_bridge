@@ -1251,6 +1251,8 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                 this.disconnect();
             }
             commandCallbacks.push(handsteuerungAusfuehrung);
+            this.log.debug("handsteuerungsAusführung für später gemerkt ("+commandCallbacks.length+" wartend)");
+            
             await this.connect();
         }
 
