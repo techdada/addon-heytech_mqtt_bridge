@@ -1062,115 +1062,116 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
 
             if (!this.connected) {
-                await this.connect();
-            } else {
-                if (isDown) {
-                    if (isShutter) {
-                        this.sendeHandsteuerungsBefehl(actor.number, 'down');
-                    } else if (isGroup) {
-                        this.sendeHandsteuerungsBefehlToGroup(actor.number, 'down');
+                this.connect();
+            }
+
+            if (isDown) {
+                if (isShutter) {
+                    this.sendeHandsteuerungsBefehl(actor.number, 'down');
+                } else if (isGroup) {
+                    this.sendeHandsteuerungsBefehlToGroup(actor.number, 'down');
+                }
+                this.log.info('down: ' + actor.name);
+            }
+
+            if (isUp) {
+                if (isShutter) {
+                    this.sendeHandsteuerungsBefehl(actor.number, 'up');
+                } else if (isGroup) {
+                    this.sendeHandsteuerungsBefehlToGroup(actor.number, 'up');
+                }
+
+                this.log.info('up ' + actor.name);
+            }
+
+            if (isStop) {
+                if (isShutter) {
+                    this.sendeHandsteuerungsBefehl(actor.number, 'off');
+                } else if (isGroup) {
+                    this.sendeHandsteuerungsBefehlToGroup(actor.number, 'off');
+                }
+
+                this.log.info('stop ' + actor.name);
+            }
+
+            if (isOn) {
+
+                if (isDimmer === false) {
+                    this.sendeHandsteuerungsBefehl(actor.number, actor.state === true ? 'up' : 'off');
+                } else if (isDimmer === true) {
+                    if (actor.state === true) {
+
+                        const lvl = id.replace('on', 'level');
+                        this.setState(lvl, 100);
+                    } else if (state.val === false) {
+                        const lvl = id.replace('on', 'level');
+                        this.setState(lvl, 0);
+
                     }
-                    this.log.info('down: ' + actor.name);
                 }
 
-                if (isUp) {
-                    if (isShutter) {
-                        this.sendeHandsteuerungsBefehl(actor.number, 'up');
-                    } else if (isGroup) {
-                        this.sendeHandsteuerungsBefehlToGroup(actor.number, 'up');
+                this.log.info('on '+ actor.name);
+
+            }
+
+            if (isLevel) {
+
+                const helper = id.replace('.level', '');
+                const no = helper.match(/\d*$/g);
+
+                this.sendeHandsteuerungsBefehl(no[0], state.val.toString());
+
+                this.log.info('level: ' + no[0] + ' ' + state.val);
+
+            }
+
+
+            if (isActivate && isScene) {
+                this.sendeSzenarioBefehl(actor.number);
+
+                this.log.info('activate '+actor.name );
+            }
+
+            if (isPercent) {
+                let pVal = parseInt(pPercent.exec(command)[0].replace("percent",""));
+                if (isShutter) {
+                    if (this.checkNewerVersion()) {
+                        this.sendeHandsteuerungsBefehl(actor.number, pVal.toString());
+                    } else {
+                        this.gotoShutterPosition(actor.number, pVal)();
                     }
-
-                    this.log.info('up ' + actor.name);
-                }
-
-                if (isStop) {
-                    if (isShutter) {
-                        this.sendeHandsteuerungsBefehl(actor.number, 'off');
-                    } else if (isGroup) {
-                        this.sendeHandsteuerungsBefehlToGroup(actor.number, 'off');
+                } else if (isGroup) {
+                    if (this.checkNewerVersion()) {
+                        this.sendeHandsteuerungsBefehlToGroup(actor.number, pVal.toString());
+                    } else {
+                        this.gotoShutterPositionGroups(actor.number, pVal);
                     }
-
-                    this.log.info('stop ' + actor.name);
                 }
 
-                if (isOn) {
+                this.log.info('percent: ' + actor.number + ' ' + pVal);
+            }
 
-                    if (isDimmer === false) {
-                        this.sendeHandsteuerungsBefehl(actor.number, actor.state === true ? 'up' : 'off');
-                    } else if (isDimmer === true) {
-                        if (actor.state === true) {
+        if (isTilt) {
+            let pVal = parseInt(pTilt.exec(command)[0].replace("tilt",""));
+            this.log.info("TILT: "+actor.number+" "+actor.name+" "+pVal+" cmnd:"+pTilt.exec(command)[0]);
 
-                            const lvl = id.replace('on', 'level');
-                            this.setState(lvl, 100);
-                        } else if (state.val === false) {
-                            const lvl = id.replace('on', 'level');
-                            this.setState(lvl, 0);
-
-                        }
-                    }
-
-                    this.log.info('on '+ actor.name);
-
+            if (isShutter) {
+                if (this.checkNewerVersion()) {
+                    this.sendeHandsteuerungsBefehl(actor.number, 'up', pVal);
+                } else {
+                    // not implemented for older versions
+                }
+            } else if (isGroup) {
+                if (this.checkNewerVersion()) {
+                    this.sendeHandsteuerungsbefehlToGroup(actor.number,'up', pVal);
+                } else {
+                    // not implemented for older versions
                 }
 
-                if (isLevel) {
+            }
+        }
 
-                    const helper = id.replace('.level', '');
-                    const no = helper.match(/\d*$/g);
-
-                    this.sendeHandsteuerungsBefehl(no[0], state.val.toString());
-
-                    this.log.info('level: ' + no[0] + ' ' + state.val);
-
-                }
-
-
-                if (isActivate && isScene) {
-                    this.sendeSzenarioBefehl(actor.number);
-
-                    this.log.info('activate '+actor.name );
-                }
-
-                if (isPercent) {
-                    let pVal = parseInt(pPercent.exec(command)[0].replace("percent",""));
-                    if (isShutter) {
-                        if (this.checkNewerVersion()) {
-                            this.sendeHandsteuerungsBefehl(actor.number, pVal.toString());
-                        } else {
-                            this.gotoShutterPosition(actor.number, pVal)();
-                        }
-                    } else if (isGroup) {
-                        if (this.checkNewerVersion()) {
-                            this.sendeHandsteuerungsBefehlToGroup(actor.number, pVal.toString());
-                        } else {
-                            this.gotoShutterPositionGroups(actor.number, pVal);
-                        }
-                    }
-
-                    this.log.info('percent: ' + actor.number + ' ' + pVal);
-                }
-
-			if (isTilt) {
-				let pVal = parseInt(pTilt.exec(command)[0].replace("tilt",""));
-                this.log.info("TILT: "+actor.number+" "+actor.name+" "+pVal+" cmnd:"+pTilt.exec(command)[0]);
-
-				if (isShutter) {
-					if (this.checkNewerVersion()) {
-						this.sendeHandsteuerungsBefehl(actor.number, 'up', pVal);
-					} else {
-						// not implemented for older versions
-					}
-				} else if (isGroup) {
-					if (this.checkNewerVersion()) {
-						this.sendeHandsteuerungsbefehlToGroup(actor.number,'up', pVal);
-					} else {
-						// not implemented for older versions
-					}
-
-				}
-			}
-
-		}
+    
 
             //this.log.debug(`state ${id} changed: ${state.val} (ack = ${state.ack})`);
         } else {
@@ -1254,7 +1255,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             commandCallbacks.push(handsteuerungAusfuehrung);
             this.log.debug("handsteuerungsAusführung gemerkt ("+commandCallbacks.length+" wartend)");
             
-            await this.connect();
+            this.connect();
         }
 
     }
