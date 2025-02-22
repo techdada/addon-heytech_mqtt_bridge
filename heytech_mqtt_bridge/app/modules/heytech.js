@@ -220,6 +220,8 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
                 runningCommandCallbacks = false;
             });
+        } else {
+            this.debug.log('No waiting callbacks');
         }
         
 
@@ -1245,9 +1247,9 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             handsteuerungAusfuehrung();
             this.checkShutterStatus()();
         } else {
-            /*if (!this.connecting) {
-                client.disconnect();
-            }*/
+            if (!this.connecting) {
+                this.disconnect();
+            }
             commandCallbacks.push(handsteuerungAusfuehrung);
             await this.connect();
         }
