@@ -1,13 +1,13 @@
 ---
 name: Heytech MQTT Bridge
-version: 1.0.4a
+version: 1.0.5
 slug: heytech_mqtt_bridge
 description: Konvertiert MQTT Messages in ein proprietäres Protokoll
 arch:
-  - amd64
-  - armhf
-  - armv7
-  - i386
+#  - amd64
+#  - armhf
+#  - armv7
+#  - i386
   - aarch64
 startup: system
 init: false  # Fix: Muss klein geschrieben sein
