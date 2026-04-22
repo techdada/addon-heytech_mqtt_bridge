@@ -1,6 +1,6 @@
 ---
 name: Heytech MQTT Bridge
-version: 1.0.5
+version: 1.0.5-alpha1
 slug: heytech_mqtt_bridge
 description: Konvertiert MQTT Messages in ein proprietäres Protokoll
 arch:
