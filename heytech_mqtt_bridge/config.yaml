@@ -8,6 +8,7 @@ arch:
   - armhf
   - armv7
   - i386
+  - aarch64
 startup: system
 init: false  # Fix: Muss klein geschrieben sein
 boot: auto
