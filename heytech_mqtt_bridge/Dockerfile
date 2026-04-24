@@ -1,6 +1,6 @@
 # Nutzt das offizielle Home Assistant Base-Image mit S6-Overlay
 # FROM ghcr.io/hassio-addons/base:14.0.3
-FROM FROM ghcr.io/home-assistant/base:latest
+FROM ghcr.io/home-assistant/base:latest
 
 # Installiere notwendige Abhängigkeiten
 RUN apk add --no-cache jq nodejs npm
