@@ -10,7 +10,7 @@ COPY app/ /app/
 COPY package*.json /app/
 
 # Kopiere das Start-Skript ins HAOS-verwaltete Service-System
-COPY rootfs/ /
+# COPY rootfs/ /
 
 RUN cd /app && npm install --only=production
 
