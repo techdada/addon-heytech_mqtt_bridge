@@ -125,7 +125,11 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         this.telnet = null; // telnet-stream
         this.connected = false;
         this.connecting = false;
-        this.reconnectDelay = 5000;
+        this.reconnectDelay = 10000;
+        this.reconnectTimeout = null;
+        this.statusIntervals = new Set();
+        this.statusTimeouts = new Set();
+        this.stopping = false;
 
 
         //temp variable for processIncomingData
@@ -139,22 +143,33 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
 
     async connect() {
-        if (this.connected || this.connecting) return;
+        if (this.stopping || this.connected || this.connecting) return;
+        clearTimeout(this.reconnectTimeout);
+        this.reconnectTimeout = null;
     
         this.connecting = true;
         this.log.info("🔄 Connecting to Telnet server...");
     
         try {
+            if (this.socket) {
+                this.socket.removeAllListeners();
+                if (this.telnet) this.telnet.removeAllListeners();
+                this.socket.destroy();
+            }
             this.socket = new net.Socket();
+            const socket = this.socket;
             this.telnet = new TelnetStream.TelnetSocket(this.socket); // ✅ Richtiger Aufruf!
     
             this.socket.connect(this.config.port, this.config.ip, () => {
+                if (this.socket !== socket) return;
                 this.connected = true;
+                this.connecting = false;
                 this.log.info("✅ Connected to Telnet server");
                 this.onConnected();
             });
             
             this.telnet.on("data", (data) => {
+                if (this.socket !== socket) return;
                 const text = data.toString();
                 lastStrings += text; // Empfangene Daten speichern
                 if (lastStrings.length > 2048) {
@@ -164,8 +179,12 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                 //this.log.debug(`📥 Received data: "${text}" | Total Length: ${lastStrings.length}`);
                 this.processIncomingData(text);
             });
-            this.socket.on("close", () => this.onDisconnected());
-            this.socket.on("error", (err) => this.onDisconnected(err));
+            this.socket.on("close", () => {
+                if (this.socket === socket) this.onDisconnected();
+            });
+            this.socket.on("error", (err) => {
+                if (this.socket === socket) this.onDisconnected(err);
+            });
 
 
             if (!this.refreshInterval) {
@@ -175,8 +194,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             }
         } catch (error) {
             this.log.error("❌ Telnet connection error:", error);
-        } finally {
-            this.connecting = false;
+            this.onDisconnected(error);
         }
     }
 
@@ -205,6 +223,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     }
 
     onConnected() {
+        const activeSocket = this.socket;
         
         // 🐍 Schlange abarbeiten
         if (commandCallbacks.length > 0) {
@@ -214,7 +233,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
                 for (const commandCallback of commandCallbacks.splice(0)) {
                     this.log.debug(" CommandCallback" + commandCallback.name);
-                    commandCallback();
+                    await commandCallback();
                     await this.sleep(500);
                 }
 
@@ -247,7 +266,12 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         };
     
         const checkFirstRun = async () => {
-            while (!this.firstRunDone()) {
+            while (this.connected && this.socket === activeSocket && !this.firstRunDone()) {
+                await this.waitForRunningCommandCallbacks();
+                if (!this.connected || this.socket !== activeSocket) {
+                    runningCommandCallbacks = false;
+                    return;
+                }
                 sendInitialCommands();
                 await this.sleep(5000);
             }
@@ -257,6 +281,10 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     }
     
     onDisconnected(error = null) {
+        for (const interval of this.statusIntervals) clearInterval(interval);
+        for (const timeout of this.statusTimeouts) clearTimeout(timeout);
+        this.statusIntervals.clear();
+        this.statusTimeouts.clear();
         this.log.info("🔴 Disconnected from controller");
     
         if (error) {
@@ -267,9 +295,11 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         this.connecting = false;
     
         // Falls ein automatischer Reconnect gewünscht ist:
-        if (this.config.autoReconnect) {
-            this.log.info(`🔄 Reconnecting in ${this.config.reconnectDelay || 5000}ms...`);
-            setTimeout(() => this.connect(), this.config.reconnectDelay || 5000);
+        if (!this.stopping && this.reconnectTimeout === null) {
+            this.reconnectTimeout = setTimeout(() => {
+                this.reconnectTimeout = null;
+                this.connect();
+            }, this.reconnectDelay);
         }
     }
     
@@ -867,7 +897,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
         if (section === "sensor") {
             if (this.config.sensor[id] === undefined) {
-                this.log.info.err("invalid sensor: "+id);
+                this.log.error("invalid sensor: "+id);
                 return;
             }
             this.config.sensor[id].state = value;
@@ -991,6 +1021,12 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     onUnload(callback) {
         try {
             this.log.info('cleaned everything up...');
+            this.stopping = true;
+            clearTimeout(this.reconnectTimeout);
+            clearInterval(this.refreshInterval);
+            for (const interval of this.statusIntervals) clearInterval(interval);
+            for (const timeout of this.statusTimeouts) clearTimeout(timeout);
+            this.disconnect();
             clearTimeout(checkShutterStatusClearTimeoutHandler);
             clearTimeout(sleepClearTimeoutHandler);
             callback();
@@ -1047,6 +1083,10 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
 
             const actorId = id.split('.');
+            if (actorId[0] === 'group') {
+                this.log.warn('Software group command ignored: ' + id);
+                return;
+            }
             const actor = this.getInventoryObject(actorId[0],actorId[1]);
 
             if (actor === undefined) {
@@ -1163,7 +1203,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                 }
             } else if (isGroup) {
                 if (this.checkNewerVersion()) {
-                    this.sendeHandsteuerungsbefehlToGroup(actor.number,'up', pVal);
+                    this.sendeHandsteuerungsBefehlToGroup(actor.number,'up', pVal);
                 } else {
                     // not implemented for older versions
                 }
@@ -1190,11 +1230,16 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             const intervalID = setInterval(() => {
                 this.send("sop\r");
             }, 5000);
+            this.statusIntervals.add(intervalID);
             checkShutterStatusClearTimeoutHandler = setTimeout(() => {
                 clearInterval(intervalID);
+                this.statusIntervals.delete(intervalID);
+                this.statusTimeouts.delete(timeoutID);
                 this.triggerShutterMessage();
                 this.triggerSensorMessage();
             }, 30000);
+            const timeoutID = checkShutterStatusClearTimeoutHandler;
+            this.statusTimeouts.add(timeoutID);
         }, 30000, {
             'leading': true,
             'trailing': false
@@ -1203,7 +1248,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
     async sendeHandsteuerungsBefehlToGroup(groupdId, befehl, terminiereNach = 0) {
         //const shutterRefsState = await this.getStateAsync(`groups.${groupdId}.refs`);
-        const shutterRefsState = this.getStates("group",groupId);
+        const shutterRefsState = this.getStates("group",groupdId);
         //if (shutterRefsState && shutterRefsState.val) {
         if (shutterRefsState) {
             const shutters = shutterRefsState.val.split(',');
@@ -1217,10 +1262,11 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         while (runningCommandCallbacks) {
             await this.sleep(500);
         }
+        runningCommandCallbacks = true;
     }
 
     async sendeHandsteuerungsBefehl(rolladenId, befehl, terminiereNach = 0) {
-        const handsteuerungAusfuehrung = () => {
+        const handsteuerungAusfuehrung = async () => {
             runningCommandCallbacks = true;
             try {
                 if (this.config.pin !== '') {
@@ -1239,6 +1285,18 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                     "\r\r",
                     "rhe\r\r"
                 ]);
+                if (terminiereNach > 100) {
+                    await this.sleep(terminiereNach);
+                    this.send([
+                        "rhi\r\r",
+                        "rhb\r",
+                        String(rolladenId),
+                        "\r",
+                        "off",
+                        "\r\r",
+                        "rhe\r\r"
+                    ]);
+                }
             } finally {
                 runningCommandCallbacks = false;
             }
@@ -1246,7 +1304,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         if (this.connected) {
             await this.waitForRunningCommandCallbacks();
             this.log.debug("sendeHandsteuerungsBefehl Rolladen "+rolladenId+" "+befehl);
-            handsteuerungAusfuehrung();
+            await handsteuerungAusfuehrung();
             this.checkShutterStatus()();
         } else {
             if (!this.connecting) {

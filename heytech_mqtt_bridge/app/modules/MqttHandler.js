@@ -26,7 +26,7 @@ class MqttHandler extends EventEmitter {
     try {
 	this.mqttClient.publish(topic, message);
     } catch (e) {
-    	connect();
+      this.connect();
 	this.mqttClient.publish(topic, message);
     }
   }
@@ -49,6 +49,7 @@ class MqttHandler extends EventEmitter {
   }
 
   connect() {
+    if (this.mqttClient !== null) return;
     let proto = 'mqtt://';
     var opts = {};
     // Connect mqtt with credentials (in case of needed, otherwise we can omit 2nd param)
@@ -72,14 +73,11 @@ class MqttHandler extends EventEmitter {
     // Mqtt error callback
     this.mqttClient.on('error', (err) => {
       this.log.error("MqttClient: "+err);
-      this.mqttClient.end();
-      this.connect();
     });
 
     // Connection callback
     this.mqttClient.on('connect', () => {
       this.log.info('mqtt client connected');
-      this.eventHandler.emit("ready");
       this.sendMessage("ONLINE");
     });
 
