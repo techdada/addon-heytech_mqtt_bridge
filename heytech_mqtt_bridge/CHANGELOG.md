@@ -1,3 +1,7 @@
+## 1.0.8
+
+- Kanallisten mit CR-Trennzeichen werden korrekt eingelesen, damit benannte MQTT-Ziele wie `shutter.Buero` erreichbar bleiben.
+
 ## 1.0.7
 
 - MQTT- und Telnet-Verbindungen voneinander entkoppelt.
