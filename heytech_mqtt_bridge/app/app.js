@@ -1,4 +1,3 @@
-//const config = require('/config');
 const MqttHandler = require('./modules/MqttHandler.js');
 
 const Heytech = require('./modules/heytech.js')({
@@ -10,25 +9,6 @@ const Heytech = require('./modules/heytech.js')({
     }
 });
 
-
-    /*"rolladen": {
-      "Schafzimmer": "1",
-      "Schlafzimmer": "2",
-      "Suedfluegel": "3",
-      "Wohnzimmer S": "4",
-      "Wohnzimmer N": "5",
-      "Gaeste": "9",
-      "Bad L+M": "10",
-      "Bad R": "11",
-      "Buero": "12",
-      "HWR": "13"
-    },
-    "rolladengroup": {
-      "Bad": {
-        "Bad L+M": "10",
-        "Bad R": "11"
-      }
-    }*/
 
 let mqttHandler = new MqttHandler({
     "config": {
@@ -47,3 +27,14 @@ let mqttHandler = new MqttHandler({
 
 mqttHandler.connect();
 Heytech.emit('ready');
+
+let shuttingDown = false;
+function shutdown() {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    Heytech.onUnload(() => {
+        if (mqttHandler.mqttClient) mqttHandler.mqttClient.end(true);
+    });
+}
+process.once('SIGTERM', shutdown);
+process.once('SIGINT', shutdown);

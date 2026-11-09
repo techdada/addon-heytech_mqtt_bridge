@@ -3,13 +3,10 @@
 
 const _ = require('lodash');
 const EventEmitter = require('events');
-//const {Telnet} = require('telnet-rxjs'); // telnet-rxjs
-//const {Telnet} = require('telnet-client'); // telnet-client
 const net = require('net');
 const TelnetStream = require("telnet-stream");
 
 
-const newLine = String.fromCharCode(13);
 const START_SOP = 'start_sop';
 const ENDE_SOP = 'ende_sop';
 const START_SKD = 'start_skd';
@@ -21,16 +18,9 @@ const ENDE_SMC = 'ende_smc';
 const START_SFI = 'start_sfi';
 const ENDE_SFI = 'ende_sfi';
 const START_SMN = 'start_smn';
-const ENDE_SMN = 'ende_smn';
-const ENDE_SMN_START_STI = 'ende_smn\r\nstart_sti';
 
 
-//let client = null; // telnet-rxjs
 
-// let connected = false; // telnet-rxjs
-// let connecting = false; // telnet-rxjs
-const commandCallbacks = [];
-let runningCommandCallbacks = false;
 
 let controllerChannelCount;
 let controllerSoftwareVersion;
@@ -42,39 +32,11 @@ let readSmc = false;
 let readSfi = false;
 let readSmn = false;
 
-let lastStrings = '';
 
 
 const actualPercents = {};
-const actualSensors = {};
-const actualShutters = {};
 
-/*
- * let retryClient = function(telnetClient) {
- *	this.tclient = telnetClient;
- *	this.send = function telnetClient(self,command) {
- *		try {
- *
- *		} catch(err) {
- *			self.tclient.connect(credentialU,credentialP,Host);
- *
- *		}
- *	}
- * }
- *
- * */
 
-let checkShutterStatusClearTimeoutHandler;
-let sleepClearTimeoutHandler;
-
-const memoizeDebounce = function (func, wait = 0, options = {}) {
-    const mem = _.memoize(function () {
-        return _.debounce(func, wait, options);
-    }, options.resolver);
-    return function () {
-        mem.apply(this, arguments).apply(this, arguments);
-    };
-};
 
 
 let start;
@@ -86,7 +48,8 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         super();
 
         this.config = options.config;
-        this.log = [];
+        this.log = {};
+        this.log.debug = () => {};
         // allow use of hostname, if no ip set.
         if (this.config.ip === undefined ) this.config.ip = this.config.host;
 
@@ -118,22 +81,23 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         this.config.scene = {};
         this.config.device = {};
 
-        //cC = createClient.bind(this);
-        this.buffer = '';
-        //this.client = new Telnet(); // telnet-client
         this.socket = null; // telnet-stream
         this.telnet = null; // telnet-stream
         this.connected = false;
         this.connecting = false;
         this.reconnectDelay = 10000;
         this.reconnectTimeout = null;
-        this.statusIntervals = new Set();
-        this.statusTimeouts = new Set();
         this.stopping = false;
 
 
         //temp variable for processIncomingData
-        this.smn = '';
+        this.receivedBuffer = '';
+        this.commandQueue = [];
+        this.draining = false;
+        this.pendingStops = new Map();
+        this.sleepTimers = new Map();
+        this.statusInterval = null;
+        this.statusTimeout = null;
 
         const d = new Date();
         start = d.getTime();
@@ -146,155 +110,143 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         if (this.stopping || this.connected || this.connecting) return;
         clearTimeout(this.reconnectTimeout);
         this.reconnectTimeout = null;
-    
         this.connecting = true;
-        this.log.info("🔄 Connecting to Telnet server...");
-    
         try {
-            if (this.socket) {
-                this.socket.removeAllListeners();
-                if (this.telnet) this.telnet.removeAllListeners();
-                this.socket.destroy();
-            }
-            this.socket = new net.Socket();
-            const socket = this.socket;
-            this.telnet = new TelnetStream.TelnetSocket(this.socket); // ✅ Richtiger Aufruf!
-    
-            this.socket.connect(this.config.port, this.config.ip, () => {
-                if (this.socket !== socket) return;
+            this.disconnect();
+            this.connecting = true;
+            this.receivedBuffer = '';
+            const socket = new net.Socket();
+            this.socket = socket;
+            this.telnet = new TelnetStream.TelnetSocket(socket);
+            const fail = error => {
+                if (this.socket === socket) this.onDisconnected(error);
+            };
+            socket.on('close', () => fail());
+            socket.on('error', fail);
+            this.telnet.on('error', fail);
+            this.telnet.on('data', data => {
+                if (this.socket !== socket || !this.connected) return;
+                try {
+                    this.processIncomingData(data.toString());
+                } catch (error) {
+                    this.log.error('Invalid Telnet response: ' + error.message);
+                }
+            });
+            socket.connect(this.config.port, this.config.ip, () => {
+                if (this.socket !== socket || this.stopping) return;
                 this.connected = true;
                 this.connecting = false;
-                this.log.info("✅ Connected to Telnet server");
-                this.onConnected();
+                this.log.info('Connected to Telnet server');
+                this.onConnected().catch(error => this.log.error('Telnet initialization: ' + error.message));
             });
-            
-            this.telnet.on("data", (data) => {
-                if (this.socket !== socket) return;
-                const text = data.toString();
-                lastStrings += text; // Empfangene Daten speichern
-                if (lastStrings.length > 2048) {
-                    lastStrings = ''; // Notfall reset
-                    this.log.debug("Datenstream reset bei ${text}");
-                }
-                //this.log.debug(`📥 Received data: "${text}" | Total Length: ${lastStrings.length}`);
-                this.processIncomingData(text);
-            });
-            this.socket.on("close", () => {
-                if (this.socket === socket) this.onDisconnected();
-            });
-            this.socket.on("error", (err) => {
-                if (this.socket === socket) this.onDisconnected(err);
-            });
-
-
             if (!this.refreshInterval) {
                 this.refreshInterval = setInterval(() => {
-                    this.sendeRefreshBefehl();
+                    this.sendeRefreshBefehl().catch(error => this.log.error('Refresh: ' + error.message));
                 }, this.config.refresh || 300000);
             }
         } catch (error) {
-            this.log.error("❌ Telnet connection error:", error);
             this.onDisconnected(error);
         }
     }
 
-    async disconnect() {
-        if (this.socket) {
-            this.socket.destroy(); // Verbindung sauber schließen
-            this.socket = null;
-            this.telnet = null;
-            this.connected = false;
-            this.log.info("🔌 Disconnected from Telnet server");
-        }
+    disconnect() {
+        const socket = this.socket;
+        this.socket = null;
+        this.telnet = null;
+        this.connected = false;
+        this.connecting = false;
+        if (socket) socket.destroy();
     }
 
     send(cmd) {
-        
-        if (!this.telnet || !this.connected) {
-            this.log.error("⚠️ Not connected. Cannot send commands.");
-            return;
-        }
-
+        if (!this.telnet || !this.connected) return false;
         if (Array.isArray(cmd)) cmd = cmd.join('');
-        
-        this.telnet.write(cmd); // CRLF für Telnet
-        cmd = cmd.replace('\r','\r\n');
-        this.log.debug(`📨 Sent: ${cmd}`);
+        try {
+            this.telnet.write(cmd);
+        } catch (error) {
+            this.onDisconnected(error);
+            throw error;
+        }
+        // Mask authentication only in the log; the transmitted bytes are unchanged.
+        const logged = cmd.replace(/(rsc\r)[^\r]*(\r)/g, '$1[redacted]$2');
+        this.log.debug('Sent: ' + logged);
+        return true;
     }
 
-    onConnected() {
+    async onConnected() {
         const activeSocket = this.socket;
-        
-        // 🐍 Schlange abarbeiten
-        if (commandCallbacks.length > 0) {
-            this.waitForRunningCommandCallbacks().then(async () => {
-                runningCommandCallbacks = true;
-                this.checkShutterStatus()();
-
-                for (const commandCallback of commandCallbacks.splice(0)) {
-                    this.log.debug(" CommandCallback" + commandCallback.name);
-                    await commandCallback();
-                    await this.sleep(500);
-                }
-
-                runningCommandCallbacks = false;
+        // A timed movement interrupted by a lost connection must stop before new work.
+        this.flushPendingStops();
+        this.drainCommands();
+        while (this.connected && this.socket === activeSocket && !this.stopping && !this.firstRunDone()) {
+            await this.runCommand(() => {
+                if (this.socket !== activeSocket) return;
+                if (this.config.pin) this.send(['rsc\r', String(this.config.pin) + '\r']);
+                this.send('\rsss\rsss\r');
+                if (!readSmo) this.send('smo\r');
+                this.send('sdt\r');
+                if (!readSfi) this.send('sfi\r');
+                if (!readSmc) this.send('smc\r');
+                if (!readSmn) this.send('smn\r');
+                if (!readSkd) this.send('skd\r');
             });
-        } else {
-            this.log.debug('No waiting callbacks');
+            await this.sleep(5000);
         }
-        
+    }
 
-        const sendInitialCommands = () => {
-            runningCommandCallbacks = true;
+    runCommand(operation) {
+        if (this.stopping) return Promise.reject(new Error('Bridge is stopping'));
+        if (this.commandQueue.length >= 256) return Promise.reject(new Error('Command queue is full'));
+        const result = new Promise((resolve, reject) => this.commandQueue.push({operation, resolve, reject}));
+        if (this.connected) this.drainCommands();
+        else if (this.reconnectTimeout === null) this.connect();
+        return result;
+    }
 
-            this.log.debug("Send initial commands");
-            if (this.config.pin) {
-                this.send([
-                    "rsc\r",
-                    String(this.config.pin)+"\r"
-                ]);
-            }
-    
-            this.send("\rsss\rsss\r");
-            if (!readSmo) this.send("smo\r");
-            this.send("sdt\r");
-            if (!readSfi) this.send("sfi\r");
-            if (!readSmc) this.send("smc\r");
-            if (!readSmn) this.send("smn\r");
-            if (!readSkd) this.send("skd\r");
-            runningCommandCallbacks = false;
-        };
-    
-        const checkFirstRun = async () => {
-            while (this.connected && this.socket === activeSocket && !this.firstRunDone()) {
-                await this.waitForRunningCommandCallbacks();
-                if (!this.connected || this.socket !== activeSocket) {
-                    runningCommandCallbacks = false;
-                    return;
+    async drainCommands() {
+        if (this.draining) return;
+        this.draining = true;
+        try {
+            while (this.connected && !this.stopping && this.commandQueue.length) {
+                const entry = this.commandQueue.shift();
+                try {
+                    this.flushPendingStops();
+                    await entry.operation();
+                    entry.resolve();
+                } catch (error) {
+                    entry.reject(error);
                 }
-                sendInitialCommands();
-                await this.sleep(5000);
+                if (this.commandQueue.length) await this.sleep(500);
             }
-        };
-    
-        checkFirstRun();
+        } catch (error) {
+            this.log.error('Command queue failed: ' + error.message);
+        } finally {
+            this.draining = false;
+        }
+    }
+
+    flushPendingStops() {
+        for (const [id, movement] of this.pendingStops) {
+            if (movement.socket === this.socket) continue;
+            this.sendStop(id, true);
+            this.pendingStops.delete(id);
+        }
+    }
+
+    sendStop(id, authenticate = false) {
+        if (!this.connected) throw new Error('Cannot send stop while disconnected');
+        if (authenticate && this.config.pin !== '') this.send(['rsc\r', String(this.config.pin), '\r']);
+        if (!this.send(['rhi\r\r', 'rhb\r', String(id), '\r', 'off', '\r\r', 'rhe\r\r'])) {
+            throw new Error('Stop was not sent');
+        }
     }
     
     onDisconnected(error = null) {
-        for (const interval of this.statusIntervals) clearInterval(interval);
-        for (const timeout of this.statusTimeouts) clearTimeout(timeout);
-        this.statusIntervals.clear();
-        this.statusTimeouts.clear();
-        this.log.info("🔴 Disconnected from controller");
-    
-        if (error) {
-            this.log.error("❌ Disconnect due to error:", error);
-        }
-    
+        this.clearStatusPolling();
         this.connected = false;
         this.connecting = false;
-    
-        // Falls ein automatischer Reconnect gewünscht ist:
+        this.receivedBuffer = '';
+        if (error) this.log.error('Telnet disconnect: ' + error.message);
         if (!this.stopping && this.reconnectTimeout === null) {
             this.reconnectTimeout = setTimeout(() => {
                 this.reconnectTimeout = null;
@@ -320,21 +272,52 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     }
 
     processIncomingData(data) {
-        // 🏡 Rolladen-Status auslesen
-        if (!readSmn && (lastStrings.includes(START_SMN) || lastStrings.includes(ENDE_SMN))) {
-            if (lastStrings.includes(ENDE_SMN_START_STI)) {
-                this.smn += data; 
-                const channels = this.smn.match(/\d\d,.*,\d,/gm);
-                this.writeOutputs(channels);
-                this.smn = "";
-                lastStrings = "";
-                this.log.debug("✅ Shutters gelesen");
-                readSmn = true;
-            } else {
-                this.smn += data;
+        this.receivedBuffer += data;
+        while (true) {
+            const start = /start_(smn|sop|skd|smo|smc|sfi)/.exec(this.receivedBuffer);
+            if (!start) {
+                this.receivedBuffer = this.receivedBuffer.slice(-9);
+                return;
+            }
+            this.receivedBuffer = this.receivedBuffer.slice(start.index);
+            const endMarker = 'ende_' + start[1];
+            const end = this.receivedBuffer.indexOf(endMarker, start[0].length);
+            const next = /start_(smn|sop|skd|smo|smc|sfi)/.exec(this.receivedBuffer.slice(start[0].length));
+            if (next && (end < 0 || start[0].length + next.index < end)) {
+                this.log.warn('Incomplete Telnet frame discarded');
+                this.receivedBuffer = this.receivedBuffer.slice(start[0].length + next.index);
+                continue;
+            }
+            if (end < 0) {
+                if (this.receivedBuffer.length > 65536) {
+                    this.log.warn('Oversized Telnet frame discarded');
+                    this.receivedBuffer = this.receivedBuffer.slice(-9);
+                }
+                return;
+            }
+            const frame = this.receivedBuffer.slice(0, end + endMarker.length);
+            this.receivedBuffer = this.receivedBuffer.slice(end + endMarker.length);
+            if (frame.length > 65536) {
+                this.log.warn('Oversized Telnet frame discarded');
+                continue;
+            }
+            try {
+                this.processFrame(frame);
+            } catch (error) {
+                this.log.warn('Invalid Telnet frame: ' + error.message);
             }
         }
-    
+    }
+
+    processFrame(lastStrings) {
+        // 🏡 Rolladen-Status auslesen
+        if (!readSmn && lastStrings.includes(START_SMN)) {
+            const channels = lastStrings.match(/\d\d,.*,\d,/gm);
+            if (!channels) throw new Error('Invalid SMN channel list');
+            this.writeOutputs(channels);
+            readSmn = true;
+        }
+
         // 🏗 SOP (Öffnungsprozente)
         else if (lastStrings.includes(START_SOP) && lastStrings.includes(ENDE_SOP)) {
             const regexpResults = lastStrings.match(/t_sop([^]+?)ende_sop/);
@@ -360,6 +343,9 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                 lastStrings.indexOf(ENDE_SKD, lastStrings.indexOf(START_SKD))
             );
             const klimadaten = klimaStr.split(",");
+            if (klimadaten.length < 16 || klimadaten.slice(0, 16).some(value => value.trim() === '' || !Number.isFinite(Number(value)))) {
+                throw new Error('Invalid climate data');
+            }
             lastStrings = "";
             this.log.debug("🌡️ Klima gelesen: " + klimadaten);
             this.writeKlima(klimadaten);
@@ -568,13 +554,13 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                     const dimmer = patt.test(channel[1].trim());
 
                     if (dimmer === false) {
-                        that.updateInventory('devices',number,{
+                        that.updateInventory('device',number,{
                                 "number": number,
                                 "name": channel[1].trim(),
                                 "state": 0
                         });
                     } else if (dimmer === true) {
-                        that.updateInventory('devices',number,{
+                        that.updateInventory('device',number,{
                             "number": number,
                             "dimmer": true,
                             "name": channel[1].trim(),
@@ -644,7 +630,6 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             let vBriAv;
             let vBriAc;
             for (st in states) {
-                let name = st.name;
                 if (states[st]) {
                     //switch (name) {
                     switch(st) {
@@ -679,9 +664,9 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                             vToMin = states[st]['state'];
                             break;
                         case 'temp_outdoor':
-                            vTo = states[st]['state'].replace(',','.');
+                            vTo = String(states[st]['state']).replace(',','.');
                             break;
-                        case 'bri_average_sensor_byte':
+                        case 'bri_average_byte':
                             vBriAv = states[st]['state'];
                             break;
                         case 'bri_actual_sensor_byte':
@@ -751,9 +736,9 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                 }
             }
 
-            if (data[1] !== 999) {
+            if (data[1] !== '999') {
                 if (vTi !== data[1] + '.' + data[2]) {
-                    this.updateInventory('sensors','temp_indoor',{
+                    this.updateInventory('sensor','temp_indoor',{
                         name: 'Indoor temperature',
                         type: 'number',
                         unit: '°C',
@@ -761,7 +746,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                     });
                 }
                 if (vTiMin !== data[3]) {
-                    this.updateInventory('sensors','temp_indoor_min',{
+                    this.updateInventory('sensor','temp_indoor_min',{
                         name: 'Indoor temperature minimum',
                         type: 'number',
                         unit: '°C',
@@ -769,7 +754,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                     });
                 }
                 if (vTiMax !== data[4]) {
-                    this.updateInventory('sensors','temp_indoor_max',{
+                    this.updateInventory('sensor','temp_indoor_max',{
                         name: 'Indoor temperature maximum',
                         type: 'number',
                         unit: '°C',
@@ -780,7 +765,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
             if (data[5] !== '999') {
                 if (vTo !== data[5] + '.' + data[6]) {
-                    this.updateInventory('sensors','temp_outdoor',{
+                    this.updateInventory('sensor','temp_outdoor',{
                         name: 'Outdoor temperature',
                         type: 'number',
                         unit: '°C',
@@ -789,7 +774,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
                 }
                 if (vToMin !== data[7]) {
-                    this.updateInventory('sensors','outdoor_temp_min',{
+                    this.updateInventory('sensor','temp_outdoor_min',{
                         name: 'Outdoor temperature minimum',
                         type: 'number',
                         unit: '°C',
@@ -797,7 +782,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                     });
                 }
                 if (vToMax !== data[8]) {
-                    this.updateInventory('sensors','temp_outdoor_max',{
+                    this.updateInventory('sensor','temp_outdoor_max',{
                         name: 'Outdoor temperature maximum',
                         type: 'number',
                         unit: '°C',
@@ -807,7 +792,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             }
 
             if (vWindA !== data[9]) {
-                this.updateInventory('sensors','wind_actual',{
+                this.updateInventory('sensor','wind_actual',{
                     name: 'Actual wind speed',
                     type: 'number',
                     unit: 'km/h',
@@ -929,26 +914,16 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         return this.config[section][id].state;
     }
 
-    getInventoryObject(section,nameid) {
-        var found = undefined;
-
-        if (this.config[section] !== undefined) {
-            if (this.config[section][nameid] !== undefined) {
-                found=this.config[section][nameid];
-            }
-
-            for (const [key,value] of Object.entries(this.config[section])) {
-                if (key == nameid || value.name == nameid) {
-                    found=value;
-                }
-            }
-
-            // do not return shutters or elements with default names
-            // not sure if this works and should stay or not.
-            let zep = new RegExp('([0-9]+ LEER)|(Motor [0-9]+)');
-            if (zep.test(found.name)) return undefined;
-            return found;
-        }
+    getInventoryObject(section, nameid) {
+        if (!['shutter', 'scene', 'device', 'dimmer', 'group'].includes(section)) return undefined;
+        const inventory = this.config[section === 'dimmer' ? 'device' : section];
+        if (!inventory || typeof nameid !== 'string') return undefined;
+        // Preserve the original last-match behavior for duplicate configured names.
+        const found = Object.entries(inventory).filter(([key, value]) =>
+            key === nameid || value.name === nameid).pop()?.[1];
+        if (!found || (section === 'dimmer' && !found.dimmer)) return undefined;
+        if (/([0-9]+ LEER)|(Motor [0-9]+)/.test(found.name)) return undefined;
+        return found;
     }
 
     updateInventory(section,id,attributes) {
@@ -977,6 +952,10 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             if (attributes.state !== undefined ) this.config.shutter[id].state = attributes.state;
         }
         if (section === "device") {
+            if (attributes.dimmer !== undefined) {
+                if (!this.config.device[id]) this.config.device[id] = {};
+                this.config.device[id].dimmer = attributes.dimmer;
+            }
             if (this.config.device[id] === undefined) this.config.device[id] = {};
             if (attributes.name !== undefined) this.config.device[id].name = attributes.name;
             if (attributes.number !== undefined ) this.config.device[id].number = attributes.number;
@@ -1018,21 +997,20 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
      * Is called when adapter shuts down - callback has to be called under any circumstances!
      * @param {() => void} callback
      */
-    onUnload(callback) {
-        try {
-            this.log.info('cleaned everything up...');
-            this.stopping = true;
-            clearTimeout(this.reconnectTimeout);
-            clearInterval(this.refreshInterval);
-            for (const interval of this.statusIntervals) clearInterval(interval);
-            for (const timeout of this.statusTimeouts) clearTimeout(timeout);
-            this.disconnect();
-            clearTimeout(checkShutterStatusClearTimeoutHandler);
-            clearTimeout(sleepClearTimeoutHandler);
-            callback();
-        } catch (e) {
-            callback();
+    onUnload(callback = () => {}) {
+        this.stopping = true;
+        clearTimeout(this.reconnectTimeout);
+        clearInterval(this.refreshInterval);
+        this.clearStatusPolling();
+        for (const entry of this.commandQueue.splice(0)) entry.reject(new Error('Bridge stopped'));
+        // Stop active timed movements while the connection is still available.
+        for (const id of this.pendingStops.keys()) {
+            try { this.sendStop(id); } catch (error) { this.log.error(error.message); }
         }
+        this.disconnect();
+        for (const [timer, resolve] of this.sleepTimers) { clearTimeout(timer); resolve(); }
+        this.sleepTimers.clear();
+        callback();
     }
 
     /**
@@ -1040,395 +1018,189 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
      * @param {string} id
      * @param {string} state
      */
-    onMessage(id, command) {
-
-        const d = new Date();
-        const now = d.getTime();
-        const diff = now - start;
-        this.log.debug("Heytech onMessage("+id+" - "+command+") diff:"+diff+" readSmn:"+readSmn);
-        if (diff > 10000 && readSmn) {
-
-            const patternShutter = new RegExp('shutter');
-            const patternGroups = new RegExp('group');
-
-            const pDown = new RegExp('down');
-            const pUp = new RegExp('up');
-            const pStop = new RegExp('stop');
-            const pOn = new RegExp('on');
-            const pLevel = new RegExp('level');
-			const pTilt = new RegExp('tilt[0-9][0-9][0-9][0-9]?');
-            const pActivate = new RegExp('activate');
-            const pPercent = new RegExp('[0-9]+percent');
-
-            if (command === undefined) {
-                command = id; // option for having it all in one
-                              // using type.nr.action notation
-                              // e.g. shutter.5.down or group.2.up or scene.2.activate
-                              // or even shutter.livingroom.70percent
-                              // i personally prefer to have it separated to e.g.
-                              // topicroot/shutter.diningroom up
-
-            }
-
-            const isDown     = pDown.test(command);
-            const isUp       = pUp.test(command);
-            const isStop     = pStop.test(command);
-            const isOn       = pOn.test(command);
-            const isLevel    = pLevel.test(command);
-			const isTilt     = pTilt.test(command);
-            const isActivate = pActivate.test(command);
-            const isPercent  = pPercent.test(command);
-
-            //let isDimmer = false;
-
-
+    async onMessage(id, command) {
+        try {
+            if (Date.now() - start <= 10000 || !readSmn) return;
+            if (typeof id !== 'string') return;
             const actorId = id.split('.');
             if (actorId[0] === 'group') {
                 this.log.warn('Software group command ignored: ' + id);
                 return;
             }
-            const actor = this.getInventoryObject(actorId[0],actorId[1]);
-
-            if (actor === undefined) {
-                this.log.warn("invalid device!");
-                return;
+            const actor = this.getInventoryObject(actorId[0], actorId[1]);
+            if (!actor) { this.log.warn('Invalid device: ' + id); return; }
+            if (Buffer.isBuffer(command)) command = command.toString();
+            let value;
+            if (command && typeof command === 'object' && !Array.isArray(command)) {
+                value = command.val !== undefined ? command.val : command.value;
+                command = command.action;
             }
-
-            let isShutter = ( actorId[0] === "shutter" ); // = patternShutter.test(id);
-            let isGroup = ( actorId[0] === "group" ); //   = patternGroups.test(id);
-            let isDimmer = ( actorId[0] === "dimmer" );
-            let isScene = ( actorId[0] === "scene" && isActivate); //   = pActivate.test(command);
-
-
-
-            if (!this.connected) {
-                this.connect();
-            }
-
-            if (isDown) {
-                if (isShutter) {
-                    this.sendeHandsteuerungsBefehl(actor.number, 'down');
-                } else if (isGroup) {
-                    this.sendeHandsteuerungsBefehlToGroup(actor.number, 'down');
+            if (command === undefined) command = actorId.slice(2).join('.');
+            if (typeof command !== 'string') return;
+            const action = command.trim();
+            const shutter = actorId[0] === 'shutter';
+            const dimmer = actorId[0] === 'dimmer';
+            const percent = /^(\d+)percent$/.exec(action);
+            const tilt = /^tilt(\d{3,4})$/.exec(action);
+            if (shutter && ['up', 'down', 'stop'].includes(action)) {
+                await this.sendeHandsteuerungsBefehl(actor.number, action === 'stop' ? 'off' : action);
+            } else if (actorId[0] === 'scene' && action === 'activate') {
+                await this.sendeSzenarioBefehl(actor.number);
+            } else if (shutter && percent) {
+                const target = Number(percent[1]);
+                if (target > 100) { this.log.warn('Invalid percentage: ' + action); return; }
+                if (this.checkNewerVersion()) await this.sendeHandsteuerungsBefehl(actor.number, String(target));
+                else this.gotoShutterPosition(actor.number, target)();
+            } else if (shutter && tilt) {
+                if (this.checkNewerVersion()) await this.sendeHandsteuerungsBefehl(actor.number, 'up', Number(tilt[1]));
+            } else if (action === 'level') {
+                if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 100) {
+                    this.log.warn('level requires a numeric val/value between 0 and 100');
+                    return;
                 }
-                this.log.info('down: ' + actor.name);
-            }
-
-            if (isUp) {
-                if (isShutter) {
-                    this.sendeHandsteuerungsBefehl(actor.number, 'up');
-                } else if (isGroup) {
-                    this.sendeHandsteuerungsBefehlToGroup(actor.number, 'up');
+                if (shutter || dimmer) await this.sendeHandsteuerungsBefehl(actor.number, String(value));
+            } else if (action === 'on') {
+                if (dimmer) {
+                    if (value === undefined) value = true;
+                    if (typeof value !== 'boolean') return;
+                    await this.sendeHandsteuerungsBefehl(actor.number, value ? '100' : '0');
+                } else if (actorId[0] === 'device' || shutter) {
+                    await this.sendeHandsteuerungsBefehl(actor.number, actor.state === true ? 'up' : 'off');
                 }
-
-                this.log.info('up ' + actor.name);
+            } else {
+                this.log.warn('Unsupported command: ' + action);
             }
-
-            if (isStop) {
-                if (isShutter) {
-                    this.sendeHandsteuerungsBefehl(actor.number, 'off');
-                } else if (isGroup) {
-                    this.sendeHandsteuerungsBefehlToGroup(actor.number, 'off');
-                }
-
-                this.log.info('stop ' + actor.name);
-            }
-
-            if (isOn) {
-
-                if (isDimmer === false) {
-                    this.sendeHandsteuerungsBefehl(actor.number, actor.state === true ? 'up' : 'off');
-                } else if (isDimmer === true) {
-                    if (actor.state === true) {
-
-                        const lvl = id.replace('on', 'level');
-                        this.setState(lvl, 100);
-                    } else if (state.val === false) {
-                        const lvl = id.replace('on', 'level');
-                        this.setState(lvl, 0);
-
-                    }
-                }
-
-                this.log.info('on '+ actor.name);
-
-            }
-
-            if (isLevel) {
-
-                const helper = id.replace('.level', '');
-                const no = helper.match(/\d*$/g);
-
-                this.sendeHandsteuerungsBefehl(no[0], state.val.toString());
-
-                this.log.info('level: ' + no[0] + ' ' + state.val);
-
-            }
-
-
-            if (isActivate && isScene) {
-                this.sendeSzenarioBefehl(actor.number);
-
-                this.log.info('activate '+actor.name );
-            }
-
-            if (isPercent) {
-                let pVal = parseInt(pPercent.exec(command)[0].replace("percent",""));
-                if (isShutter) {
-                    if (this.checkNewerVersion()) {
-                        this.sendeHandsteuerungsBefehl(actor.number, pVal.toString());
-                    } else {
-                        this.gotoShutterPosition(actor.number, pVal)();
-                    }
-                } else if (isGroup) {
-                    if (this.checkNewerVersion()) {
-                        this.sendeHandsteuerungsBefehlToGroup(actor.number, pVal.toString());
-                    } else {
-                        this.gotoShutterPositionGroups(actor.number, pVal);
-                    }
-                }
-
-                this.log.info('percent: ' + actor.number + ' ' + pVal);
-            }
-
-        if (isTilt) {
-            let pVal = parseInt(pTilt.exec(command)[0].replace("tilt",""));
-            this.log.info("TILT: "+actor.number+" "+actor.name+" "+pVal+" cmnd:"+pTilt.exec(command)[0]);
-
-            if (isShutter) {
-                if (this.checkNewerVersion()) {
-                    this.sendeHandsteuerungsBefehl(actor.number, 'up', pVal);
-                } else {
-                    // not implemented for older versions
-                }
-            } else if (isGroup) {
-                if (this.checkNewerVersion()) {
-                    this.sendeHandsteuerungsBefehlToGroup(actor.number,'up', pVal);
-                } else {
-                    // not implemented for older versions
-                }
-
-            }
-        }
-
-    
-
-            //this.log.debug(`state ${id} changed: ${state.val} (ack = ${state.ack})`);
-        } else {
-            // The state was deleted
-            //this.log.info(`state ${id} deleted`);
+        } catch (error) {
+            this.log.error('Command failed: ' + error.message);
         }
     }
 
     checkNewerVersion() {
-        return (controllerSoftwareVersion[0] === '8' && controllerSoftwareVersion >= '8.027o') ||
-            (controllerSoftwareVersion[0] === '1' && controllerSoftwareVersion >= '1.014p');
+        return typeof controllerSoftwareVersion === 'string' && ((controllerSoftwareVersion[0] === '8' && controllerSoftwareVersion >= '8.027o') ||
+            (controllerSoftwareVersion[0] === '1' && controllerSoftwareVersion >= '1.014p'));
     }
 
     checkShutterStatus() {
-        return _.debounce(async () => {
-            const intervalID = setInterval(() => {
-                this.send("sop\r");
+        return () => {
+            if (this.statusInterval !== null || !this.connected || this.stopping) return;
+            this.statusInterval = setInterval(() => {
+                try { this.send('sop\r'); } catch (error) { this.onDisconnected(error); }
             }, 5000);
-            this.statusIntervals.add(intervalID);
-            checkShutterStatusClearTimeoutHandler = setTimeout(() => {
-                clearInterval(intervalID);
-                this.statusIntervals.delete(intervalID);
-                this.statusTimeouts.delete(timeoutID);
+            this.statusTimeout = setTimeout(() => {
+                this.clearStatusPolling();
                 this.triggerShutterMessage();
                 this.triggerSensorMessage();
             }, 30000);
-            const timeoutID = checkShutterStatusClearTimeoutHandler;
-            this.statusTimeouts.add(timeoutID);
-        }, 30000, {
-            'leading': true,
-            'trailing': false
-        });
+        };
     }
 
-    async sendeHandsteuerungsBefehlToGroup(groupdId, befehl, terminiereNach = 0) {
-        //const shutterRefsState = await this.getStateAsync(`groups.${groupdId}.refs`);
-        const shutterRefsState = this.getStates("group",groupdId);
-        //if (shutterRefsState && shutterRefsState.val) {
-        if (shutterRefsState) {
-            const shutters = shutterRefsState.val.split(',');
-            shutters.forEach(rolladenId => {
-                this.sendeHandsteuerungsBefehl(rolladenId, befehl, terminiereNach);
-            });
-        }
+    clearStatusPolling() {
+        clearInterval(this.statusInterval);
+        clearTimeout(this.statusTimeout);
+        this.statusInterval = null;
+        this.statusTimeout = null;
     }
 
-    async waitForRunningCommandCallbacks() {
-        while (runningCommandCallbacks) {
-            await this.sleep(500);
-        }
-        runningCommandCallbacks = true;
+    async sendeHandsteuerungsBefehlToGroup() {
+        this.log.warn('Software groups are disabled');
     }
+
 
     async sendeHandsteuerungsBefehl(rolladenId, befehl, terminiereNach = 0) {
-        const handsteuerungAusfuehrung = async () => {
-            runningCommandCallbacks = true;
+        if (!Number.isInteger(Number(rolladenId)) || Number(rolladenId) < 1 || Number(rolladenId) > 69) throw new Error('Invalid channel');
+        if (!['up', 'down', 'off'].includes(String(befehl)) &&
+            (!/^(?:100|[0-9]{1,2})(?:\.\d+)?$/.test(String(befehl)) || Number(befehl) > 100)) throw new Error('Invalid movement');
+        if (!Number.isFinite(terminiereNach) || terminiereNach < 0 || terminiereNach > 9999) throw new Error('Invalid duration');
+        return this.runCommand(async () => {
+            let movement;
+            if (terminiereNach > 100) {
+                movement = {socket: this.socket};
+                this.pendingStops.set(rolladenId, movement);
+            }
             try {
-                if (this.config.pin !== '') {
-                    this.send([
-                        "rsc\r",
-                        this.config.pin.toString(),
-                        "\r"
-                    ]);
-                }
-                this.send([
-                    "rhi\r\r",
-                    "rhb\r",
-                    String(rolladenId),
-                    "\r",
-                    String(befehl),
-                    "\r\r",
-                    "rhe\r\r"
-                ]);
-                if (terminiereNach > 100) {
+                if (this.config.pin !== '') this.send(['rsc\r', this.config.pin.toString(), '\r']);
+                if (!this.send(['rhi\r\r', 'rhb\r', String(rolladenId), '\r', String(befehl), '\r\r', 'rhe\r\r'])) throw new Error('Movement was not sent');
+                if (movement) {
                     await this.sleep(terminiereNach);
-                    this.send([
-                        "rhi\r\r",
-                        "rhb\r",
-                        String(rolladenId),
-                        "\r",
-                        "off",
-                        "\r\r",
-                        "rhe\r\r"
-                    ]);
+                    if (this.pendingStops.get(rolladenId) === movement) {
+                        if (this.connected) {
+                            this.sendStop(rolladenId, movement.socket !== this.socket);
+                            this.pendingStops.delete(rolladenId);
+                        } else {
+                            this.log.warn('Tilt stop pending until Telnet reconnect: ' + rolladenId);
+                        }
+                    }
                 }
-            } finally {
-                runningCommandCallbacks = false;
+                this.checkShutterStatus()();
+            } catch (error) {
+                if (movement && this.connected) {
+                    try { this.sendStop(rolladenId); this.pendingStops.delete(rolladenId); } catch (_) { /* retry after reconnect */ }
+                }
+                throw error;
             }
-        };
-        if (this.connected) {
-            await this.waitForRunningCommandCallbacks();
-            this.log.debug("sendeHandsteuerungsBefehl Rolladen "+rolladenId+" "+befehl);
-            await handsteuerungAusfuehrung();
-            this.checkShutterStatus()();
-        } else {
-            if (!this.connecting) {
-                this.disconnect();
-            }
-            commandCallbacks.push(handsteuerungAusfuehrung);
-            this.log.debug("handsteuerungsAusführung gemerkt ("+commandCallbacks.length+" wartend)");
-            
-            this.connect();
-        }
-
+        });
     }
     
 
     sleep(milliseconds) {
+        if (this.stopping) return Promise.resolve();
         return new Promise(resolve => {
-            sleepClearTimeoutHandler = setTimeout(resolve, milliseconds);
+            const timer = setTimeout(() => { this.sleepTimers.delete(timer); resolve(); }, milliseconds);
+            this.sleepTimers.set(timer, resolve);
         });
     }
 
-    async gotoShutterPositionGroups(groupdId, prozent) {
-        const shutterRefsState = await this.getStateAsync(`groups.${groupdId}.refs`);
-        if (shutterRefsState && shutterRefsState.val) {
-            const shutters = shutterRefsState.val.split(',');
-            shutters.forEach(rolladenId => {
-                this.gotoShutterPosition(rolladenId, prozent)();
-            });
-        }
+    async gotoShutterPositionGroups() {
+        this.log.warn('Software groups are disabled');
     }
 
     gotoShutterPosition(rolladenId, prozent) {
-        return memoizeDebounce(async () => {
-            this.log.debug(`Percent${rolladenId} ${prozent}`);
-            // 100 = auf
-            // 0 = zu
-            const ziel = Number(prozent);
-
-            if (ziel === 100) {
-                this.sendeHandsteuerungsBefehl(rolladenId, 'up');
-            } else if (ziel === 0) {
-                this.sendeHandsteuerungsBefehl(rolladenId, 'down');
-            } else {
-                let status = actualPercents[String(rolladenId)];
-                let aktuellePosition = Number(status);
-                let direction = 'up';
-                if (aktuellePosition > ziel) {
-                    direction = 'down';
-                } else if (aktuellePosition === ziel) {
-                    direction = 'off';
+        return _.debounce(() => {
+            const position = async () => {
+                const ziel = Number(prozent);
+                if (!Number.isFinite(ziel) || ziel < 0 || ziel > 100) throw new Error('Invalid position');
+                if (ziel === 100 || ziel === 0) {
+                    await this.sendeHandsteuerungsBefehl(rolladenId, ziel === 100 ? 'up' : 'down');
+                    return;
                 }
-
-                this.sendeHandsteuerungsBefehl(rolladenId, direction);
-
+                let aktuellePosition = actualPercents[String(rolladenId)];
+                if (!Number.isFinite(aktuellePosition)) throw new Error('No current shutter position');
+                const direction = aktuellePosition > ziel ? 'down' : aktuellePosition < ziel ? 'up' : 'off';
+                await this.sendeHandsteuerungsBefehl(rolladenId, direction);
+                const deadline = Date.now() + 120000;
                 while ((direction === 'down' && aktuellePosition > ziel) || (direction === 'up' && aktuellePosition < ziel)) {
-                    status = actualPercents[String(rolladenId)];
-                    aktuellePosition = Number(status);
+                    if (this.stopping || !this.connected || Date.now() >= deadline) {
+                        this.pendingStops.set(rolladenId, {socket: null});
+                        if (this.connected) this.flushPendingStops();
+                        return;
+                    }
+                    aktuellePosition = actualPercents[String(rolladenId)];
                     await this.sleep(100);
                 }
-
-                this.sendeHandsteuerungsBefehl(rolladenId, 'off');
-            }
+                await this.sendeHandsteuerungsBefehl(rolladenId, 'off');
+            };
+            position().catch(error => this.log.error('Positioning failed: ' + error.message));
         }, 500);
     }
 
     async sendeRefreshBefehl() {
-        const refreshBefehl = () => {
-            runningCommandCallbacks = true;
-    
-            if (this.config.pin) {
-                this.send([
-                    "rsc\r",
-                    String(this.config.pin) + "\r"
-                ]);
-            }
-    
-            this.send("skd\r");
-            runningCommandCallbacks = false;
-        };
-    
-        if (this.connected) {
-            await this.waitForRunningCommandCallbacks();
-            refreshBefehl();
-        } else {
-            if (!this.connecting) {
-                this.log.warn("⚠️ Connection lost. Attempting reconnect...");
-                this.disconnect(); // `this.client.disconnect();` wurde durch die Methode ersetzt
-                this.connect();
-            }
-            commandCallbacks.push(refreshBefehl);
-        }
+        // Keep at most one refresh waiting during an outage.
+        if (this.refreshPending) return;
+        this.refreshPending = true;
+        try {
+            await this.runCommand(() => {
+                if (this.config.pin) this.send(['rsc\r', String(this.config.pin) + '\r']);
+                this.send('skd\r');
+            });
+        } finally { this.refreshPending = false; }
     }
     
     async sendeSzenarioBefehl(rolladenId) {
-        const szenarioAusfuehrung = () => {
-            runningCommandCallbacks = true;
-    
-            if (this.config.pin) {
-                this.send([
-                    "rsc\r",
-                    String(this.config.pin)+"\r"
-                ]);
-            }
-    
-            this.send([
-                "rsa\r",
-                String(rolladenId)+"\r\r",
-                "sop\r\r"
-            ]);
-    
-            runningCommandCallbacks = false;
-        };
-    
-        if (this.connected) {
-            await this.waitForRunningCommandCallbacks();
-            szenarioAusfuehrung();
+        return this.runCommand(() => {
+            if (this.config.pin) this.send(['rsc\r', String(this.config.pin) + '\r']);
+            this.send(['rsa\r', String(rolladenId) + '\r\r', 'sop\r\r']);
             this.checkShutterStatus()();
-        } else {
-            if (!this.connecting) {
-                this.log.warn("⚠️ Connection lost. Attempting reconnect...");
-                this.disconnect();
-                this.connect();
-            }
-            commandCallbacks.push(szenarioAusfuehrung);
-        }
+        });
     }
     
 }

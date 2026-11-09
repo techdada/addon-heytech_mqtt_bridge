@@ -21,30 +21,26 @@ class MqttHandler extends EventEmitter {
   }
 
   publishMessage(suffix,message) {
-    let topic = this.config.state_topic_root+'/'+suffix;
-    //console.log("topic: "+topic+", value: "+message);
+    const topic = this.config.state_topic_root + '/' + suffix;
     try {
-	this.mqttClient.publish(topic, message);
-    } catch (e) {
-      this.connect();
-	this.mqttClient.publish(topic, message);
+      if (this.mqttClient) this.mqttClient.publish(topic, message);
+    } catch (error) {
+      this.log.error('MQTT publish failed: ' + error.message);
     }
   }
 
   processMessage(topic,message) {
-    this.log.info(topic.toString() + " : " + message.toString());
-    var rolloId = topic.split('/').pop();
+    if (message.length > 4096) { this.log.warn('Oversized MQTT command ignored'); return; }
+    const rolloId = topic.split('/').pop();
+    const plain = message.toString();
+    let command;
+    try { command = JSON.parse(plain); } catch (_) { command = plain; }
+    // Preserve plain commands and JSON action objects; never retry a failed handler.
+    if (typeof command !== 'string' && (!command || typeof command !== 'object' || Array.isArray(command) || typeof command.action !== 'string')) return;
     try {
-      var command = JSON.parse(message);
-      if (command.action !== undefined) {
-        this.log.info("trigger event for "+rolloId+" - "+command);
-        this.eventHandler.emit("message",rolloId,command);
-      }
-    } catch (e) {
-      // retry with plain command
-      this.log.warn("trigger event for "+rolloId+" - "+message);
-      this.eventHandler.emit("message",rolloId,message);
-      return;
+      this.eventHandler.emit('message', rolloId, command);
+    } catch (error) {
+      this.log.error('Command handler failed: ' + error.message);
     }
   }
 
@@ -85,11 +81,6 @@ class MqttHandler extends EventEmitter {
     this.log.info("subscribing to "+this.config.control_topic_root+'/#');
     this.mqttClient.subscribe(this.config.control_topic_root + '/#', {qos: 0});
 
-    // When a message arrives, console.log it
-    /*this.mqttClient.on('message', function (topic, message) {
-      console.log(topic.toString() + " : " + message.toString());
-      self.processMessage(topic,message);
-    });*/
     this.mqttClient.on('message', this.processMessage.bind(this));
 
     this.mqttClient.on('close', () => {
@@ -99,7 +90,11 @@ class MqttHandler extends EventEmitter {
 
   // Sends a mqtt message to topic: mytopic
   sendMessage(message) {
-    this.mqttClient.publish(this.config.state_topic_root, message);
+    try {
+      if (this.mqttClient) this.mqttClient.publish(this.config.state_topic_root, message);
+    } catch (error) {
+      this.log.error('MQTT publish failed: ' + error.message);
+    }
   }
 
 
