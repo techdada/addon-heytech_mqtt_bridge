@@ -114,6 +114,20 @@ async function runTests(sources) {
         h.bridge.processIncomingData('start_sop30,ende_sopstart_sop40,ende_sop');
         equal(h.bridge.config.shutter[1].state, 40, 'both frames consumed');
     });
+    await test('CR-separated channel inventory preserves named MQTT targets', async () => {
+        const h = harness();
+        const rows = '01,Living,1,\r12,Buero,1,\r13,HWR,1,\r';
+        for (const chunk of ['start_smn' + rows.slice(0, 20), rows.slice(20) + 'ende_smn']) {
+            h.bridge.processIncomingData(chunk);
+        }
+        equal(Object.keys(h.bridge.config.shutter).length, 3, 'all CR-separated channels parsed');
+        equal(h.bridge.getInventoryObject('shutter', 'Buero').number, 12, 'named target found');
+        await h.advance(10001);
+        const commands = [];
+        h.bridge.sendeHandsteuerungsBefehl = async (...args) => commands.push(args);
+        await h.bridge.onMessage('shutter.Buero', 'up');
+        equal(commands, [[12, 'up']], 'named MQTT command reaches correct channel');
+    });
     await test('oversized and malformed frames cannot block valid following frames', async () => {
         const h = harness(); h.bridge.processIncomingData('start_smn' + 'x'.repeat(70000));
         assert(h.bridge.receivedBuffer.length <= 9, 'bounded buffer');

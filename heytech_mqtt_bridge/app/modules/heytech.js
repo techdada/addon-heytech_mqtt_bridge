@@ -312,7 +312,8 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     processFrame(lastStrings) {
         // 🏡 Rolladen-Status auslesen
         if (!readSmn && lastStrings.includes(START_SMN)) {
-            const channels = lastStrings.match(/\d\d,.*,\d,/gm);
+            // Match individual records even when the controller separates them with CR only.
+            const channels = lastStrings.match(/\d{2},[^,\r\n]*,\d,/g);
             if (!channels) throw new Error('Invalid SMN channel list');
             this.writeOutputs(channels);
             readSmn = true;
