@@ -22,6 +22,27 @@ const ENDE_SMN_START_STI = 'ende_smn\r\nstart_sti';
 
 
 let client = null;
+let refreshInterval;
+let reconnectTimeout;
+let clientSubscriptions = [];
+const statusIntervals = new Set();
+const statusTimeouts = new Set();
+
+function cleanupClient() {
+    clearTimeout(reconnectTimeout);
+    reconnectTimeout = undefined;
+    clearInterval(refreshInterval);
+    for (const interval of statusIntervals) clearInterval(interval);
+    for (const timeout of statusTimeouts) clearTimeout(timeout);
+    statusIntervals.clear();
+    statusTimeouts.clear();
+    for (const subscription of clientSubscriptions) subscription.unsubscribe();
+    clientSubscriptions = [];
+    if (client !== null) client.disconnect();
+    client = null;
+    connected = false;
+    connecting = false;
+}
 
 let connected = false;
 let connecting = false;
@@ -179,15 +200,34 @@ function createClient() {
         this.log.warn('No port in configuration found');
     } else {
         this.log.info("Connecting to "+this.config.ip+":"+this.config.port);
+        cleanupClient();
         client = Telnet.client(this.config.ip + ':' + this.config.port);
-        setInterval(() => {
+        const activeClient = client;
+        const scheduleReconnect = () => {
+            if (client !== activeClient || reconnectTimeout !== undefined) return;
+            reconnectTimeout = setTimeout(() => {
+                reconnectTimeout = undefined;
+                if (client !== activeClient || connected || connecting) return;
+                connecting = true;
+                try {
+                    activeClient.connect();
+                } catch (error) {
+                    connecting = false;
+                    this.log.error('Telnet reconnect failed: ' + error);
+                    scheduleReconnect();
+                }
+            }, 10000);
+        };
+        refreshInterval = setInterval(() => {
             this.sendeRefreshBefehl();
         }, this.config.refresh || 300000);
 
-        client.filter((event) => event instanceof Telnet.Event.Connected)
+        clientSubscriptions.push(client.filter((event) => event instanceof Telnet.Event.Connected)
             .subscribe(async () => {
                 connected = true;
                 connecting = false;
+                clearTimeout(reconnectTimeout);
+                reconnectTimeout = undefined;
                 const that = this;
 
                 function firstRunDone() {
@@ -220,7 +260,7 @@ function createClient() {
                     client.send(this.config.pin.toString());
                     client.send(newLine);
                 }
-                while (!firstRunDone()) {
+                while (client === activeClient && !firstRunDone()) {
                     client.send(newLine);
                     client.send('sss');
                     client.send(newLine);
@@ -251,8 +291,10 @@ function createClient() {
                     await this.sleep(2000);
                 }
 
+                if (client !== activeClient) return;
                 if (commandCallbacks.length > 0) {
                     await this.waitForRunningCommandCallbacks();
+                    if (client !== activeClient) return;
                     runningCommandCallbacks = true;
                     this.checkShutterStatus()();
 
@@ -260,34 +302,38 @@ function createClient() {
                     do {
                         commandCallback = commandCallbacks.shift();
                         if (commandCallback) {
-                            commandCallback();
+                            await commandCallback();
                             await this.sleep(500);
                         }
-                    } while (commandCallbacks.length > 0);
+                    } while (client === activeClient && commandCallbacks.length > 0);
                     runningCommandCallbacks = false;
                 }
 
-            });
+            }));
 
-        client.filter((event) => event instanceof Telnet.Event.Disconnected)
+        clientSubscriptions.push(client.filter((event) => event instanceof Telnet.Event.Disconnected)
             .subscribe(() => {
                 this.log.info('Disconnected from controller');
                 connected = false;
                 connecting = false;
-            });
+                scheduleReconnect();
+            }));
 
-        client.subscribe(
+        clientSubscriptions.push(client.subscribe(
             () => {
                 // console.log('Received event:', event);
             },
             (error) => {
                 console.error('An error occurred:', error);
+                connected = false;
+                connecting = false;
+                scheduleReconnect();
             }
-        );
+        ));
 
         let smn = '';
 
-        client.data.subscribe((data) => {
+        clientSubscriptions.push(client.data.subscribe((data) => {
             this.log.debug('Data: ' + data);
 
             lastStrings = lastStrings.concat(data);
@@ -383,7 +429,7 @@ function createClient() {
                 readSfi = true;
             }
 
-        });
+        }));
     }
 
     const wOutputs = writeOutputs.bind(this);
@@ -803,7 +849,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
         if (section === "sensor") {
             if (this.config.sensor[id] === undefined) {
-                this.log.info.err("invalid sensor: "+id);
+                this.log.error("invalid sensor: "+id);
                 return;
             }
             this.config.sensor[id].state = value;
@@ -811,14 +857,14 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
         if (section === "shutter") {
             if (this.config.shutter[id] === undefined) {
-                console.err("invalid shutter: "+id);
+                console.error("invalid shutter: "+id);
                 return;
             }
             this.config.shutter[id].state = value;
         }
         if (section === "group") {
             if (this.config.group[id] === undefined) {
-                console.err("invalid shutter: "+id);
+                console.error("invalid shutter: "+id);
                 return;
             }
             this.config.group[id].state = value;
@@ -915,7 +961,10 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             this.log.error("Cannot connect - no ip or hostname configured");
             return;
         }
+        if (client !== null) return;
         cC();
+        if (client === null) return;
+        connecting = true;
         client.connect();
 
     }
@@ -927,6 +976,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
     onUnload(callback) {
         try {
             this.log.info('cleaned everything up...');
+            cleanupClient();
             clearTimeout(checkShutterStatusClearTimeoutHandler);
             clearTimeout(sleepClearTimeoutHandler);
             callback();
@@ -983,6 +1033,11 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
 
             const actorId = id.split('.');
+            // Software groups are unsupported until their membership mapping is defined.
+            if (actorId[0] === 'group') {
+                this.log.warn('Software group command ignored: ' + id);
+                return;
+            }
             const actor = this.getInventoryObject(actorId[0],actorId[1]);
 
             if (actor === undefined) {
@@ -1098,7 +1153,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 					}
 				} else if (isGroup) {
 					if (this.checkNewerVersion()) {
-						this.sendeHandsteuerungsbefehlToGroup(actor.number,'up', pVal);
+                        this.sendeHandsteuerungsBefehlToGroup(actor.number,'up', pVal);
 					} else {
 						// not implemented for older versions
 					}
@@ -1126,11 +1181,16 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                 client.send('sop');
                 client.send(newLine);
             }, 5000);
+            statusIntervals.add(intervalID);
             checkShutterStatusClearTimeoutHandler = setTimeout(() => {
                 clearInterval(intervalID);
+                statusIntervals.delete(intervalID);
+                statusTimeouts.delete(timeoutID);
                 this.triggerShutterMessage();
                 this.triggerSensorMessage();
             }, 30000);
+            const timeoutID = checkShutterStatusClearTimeoutHandler;
+            statusTimeouts.add(timeoutID);
         }, 30000, {
             'leading': true,
             'trailing': false
@@ -1139,7 +1199,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
 
     async sendeHandsteuerungsBefehlToGroup(groupdId, befehl, terminiereNach = 0) {
         //const shutterRefsState = await this.getStateAsync(`groups.${groupdId}.refs`);
-        const shutterRefsState = this.getStates("group",groupId);
+        const shutterRefsState = this.getStates("group",groupdId);
         //if (shutterRefsState && shutterRefsState.val) {
         if (shutterRefsState) {
             const shutters = shutterRefsState.val.split(',');
@@ -1153,10 +1213,11 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
         while (runningCommandCallbacks) {
             await this.sleep(500);
         }
+        runningCommandCallbacks = true;
     }
 
     async sendeHandsteuerungsBefehl(rolladenId, befehl, terminiereNach = 0) {
-        const handsteuerungAusfuehrung = () => {
+        const handsteuerungAusfuehrung = async () => {
             const runFor = terminiereNach;
             const runCmd = befehl;
             var strTermNach = "";
@@ -1164,6 +1225,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             this.log.info("HandsteuerungsAusfuehrung: "+rolladenId+" "+runCmd+" "+strTermNach);
 
             runningCommandCallbacks = true;
+            try {
             if (this.config.pin !== '') {
                 client.send('rsc');
                 client.send(newLine);
@@ -1184,7 +1246,7 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             client.send(newLine);
             client.send(newLine);
             if (runFor > 100) {
-                this.sleep(runFor);
+                await this.sleep(runFor);
 
                 client.send('rhi');
                 client.send(newLine);
@@ -1205,12 +1267,14 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             client.send(newLine);
             client.send(newLine);*/
             this.triggerMessage(rolladenId,befehl);
-            runningCommandCallbacks = false;
+            } finally {
+                runningCommandCallbacks = false;
+            }
 
         };
         if (connected) {
             await this.waitForRunningCommandCallbacks();
-            handsteuerungAusfuehrung();
+            await handsteuerungAusfuehrung();
             this.checkShutterStatus()();
         } else {
             if (!connecting) {

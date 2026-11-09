@@ -32,4 +32,4 @@ let mqttHandler = new MqttHandler({
 
 
 mqttHandler.connect();
-//Heytech.connect();
+Heytech.emit('ready');

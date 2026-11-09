@@ -1,12 +1,16 @@
-FROM docker.io/node:carbon
+ARG NODE_IMAGE=docker.io/node:22-alpine3.24
+FROM ${NODE_IMAGE}
+
+# Required by the existing run.sh entrypoint.
+RUN apk add --no-cache bash
 
 # Create app directory
 WORKDIR /usr/src/app
 
 # Install app dependencies
-COPY package*.json ./
+COPY app/package*.json ./
 
-RUN npm install && npm audit fix
+RUN npm install
 
 # Bundle app source
 COPY app/ /usr/src/app/

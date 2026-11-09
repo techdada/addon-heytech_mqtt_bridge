@@ -1,7 +1,8 @@
 {
   "name": "Heytech MQTT Bridge",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "slug": "heytech_mqtt_bridge",
+  "arch": ["armhf", "armv7", "aarch64", "amd64"],
   "description": "Konvertiert MQTT Messages in ein proprietäres Protokoll",
   "startup": "system",
   "boot": "auto",
