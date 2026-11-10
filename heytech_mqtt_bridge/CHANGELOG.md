@@ -1,3 +1,8 @@
+## 1.0.11
+
+- Erkannte Kanäle werden beim Start mit Typ, Kanalnummer und Namen im normalen Log ausgegeben.
+- Aktionslogs für Auf, Ab, Stopp, Prozent, Tilt, Level, Ein und Szenen wiederhergestellt.
+
 ## 1.0.10
 
 - SMN-Kanallisten werden wieder bis zum anschließenden `start_sti` gesammelt, bevor das Geräteinventar übernommen wird.

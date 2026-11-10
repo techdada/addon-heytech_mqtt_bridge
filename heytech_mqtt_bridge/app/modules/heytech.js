@@ -324,6 +324,11 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             if (!channels) throw new Error('Invalid SMN channel list');
             this.writeOutputs(channels);
             readSmn = true;
+            for (const section of ['shutter', 'device', 'scene', 'group']) {
+                const entries = Object.values(this.config[section]);
+                this.log.info('Found ' + entries.length + ' ' + section + ' channels: ' +
+                    entries.map(item => item.number + '=' + JSON.stringify(item.name)).join(', '));
+            }
         }
 
         // 🏗 SOP (Öffnungsprozente)
@@ -1052,28 +1057,39 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             const tilt = /^tilt(\d{3,4})$/.exec(action);
             if (shutter && ['up', 'down', 'stop'].includes(action)) {
                 await this.sendeHandsteuerungsBefehl(actor.number, action === 'stop' ? 'off' : action);
+                this.log.info(action + ': ' + actor.name + ' (channel ' + actor.number + ')');
             } else if (actorId[0] === 'scene' && action === 'activate') {
                 await this.sendeSzenarioBefehl(actor.number);
+                this.log.info('activate: ' + actor.name + ' (channel ' + actor.number + ')');
             } else if (shutter && percent) {
                 const target = Number(percent[1]);
                 if (target > 100) { this.log.warn('Invalid percentage: ' + action); return; }
                 if (this.checkNewerVersion()) await this.sendeHandsteuerungsBefehl(actor.number, String(target));
                 else this.gotoShutterPosition(actor.number, target)();
+                this.log.info('percent: ' + actor.name + ' (channel ' + actor.number + ') ' + target + '%');
             } else if (shutter && tilt) {
-                if (this.checkNewerVersion()) await this.sendeHandsteuerungsBefehl(actor.number, 'up', Number(tilt[1]));
+                if (this.checkNewerVersion()) {
+                    await this.sendeHandsteuerungsBefehl(actor.number, 'up', Number(tilt[1]));
+                    this.log.info('tilt: ' + actor.name + ' (channel ' + actor.number + ') ' + Number(tilt[1]) + ' ms');
+                }
             } else if (action === 'level') {
                 if (typeof value !== 'number' || !Number.isFinite(value) || value < 0 || value > 100) {
                     this.log.warn('level requires a numeric val/value between 0 and 100');
                     return;
                 }
-                if (shutter || dimmer) await this.sendeHandsteuerungsBefehl(actor.number, String(value));
+                if (shutter || dimmer) {
+                    await this.sendeHandsteuerungsBefehl(actor.number, String(value));
+                    this.log.info('level: ' + actor.name + ' (channel ' + actor.number + ') ' + value);
+                }
             } else if (action === 'on') {
                 if (dimmer) {
                     if (value === undefined) value = true;
                     if (typeof value !== 'boolean') return;
                     await this.sendeHandsteuerungsBefehl(actor.number, value ? '100' : '0');
+                    this.log.info('on: ' + actor.name + ' (channel ' + actor.number + ') ' + value);
                 } else if (actorId[0] === 'device' || shutter) {
                     await this.sendeHandsteuerungsBefehl(actor.number, actor.state === true ? 'up' : 'off');
+                    this.log.info('on: ' + actor.name + ' (channel ' + actor.number + ')');
                 }
             } else {
                 this.log.warn('Unsupported command: ' + action);
