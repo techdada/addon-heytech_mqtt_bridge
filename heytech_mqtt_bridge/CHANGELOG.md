@@ -1,3 +1,8 @@
+## 1.0.10
+
+- SMN-Kanallisten werden wieder bis zum anschließenden `start_sti` gesammelt, bevor das Geräteinventar übernommen wird.
+- Die allgemeine Frame-Resynchronisierung verwirft keine laufende SMN-Kanalliste mehr.
+
 ## 1.0.8
 
 - Kanallisten mit CR-Trennzeichen werden korrekt eingelesen, damit benannte MQTT-Ziele wie `shutter.Buero` erreichbar bleiben.

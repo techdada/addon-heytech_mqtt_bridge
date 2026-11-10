@@ -114,10 +114,20 @@ async function runTests(sources) {
         h.bridge.processIncomingData('start_sop30,ende_sopstart_sop40,ende_sop');
         equal(h.bridge.config.shutter[1].state, 40, 'both frames consumed');
     });
+    await test('inventory waits for the legacy SMN to STI completion boundary', async () => {
+        const h = harness();
+        h.bridge.processIncomingData('start_smn01,Living,1,\r\nende_smn');
+        equal(Object.keys(h.bridge.config.shutter).length, 0, 'inventory not committed before STI');
+        h.bridge.processIncomingData('\r\nstart_st');
+        equal(Object.keys(h.bridge.config.shutter).length, 0, 'split STI marker stays buffered');
+        h.bridge.processIncomingData('istart_sfi8.027rende_sfi');
+        equal(h.bridge.getInventoryObject('shutter', 'Living').number, 1, 'inventory committed');
+        assert(h.bridge.checkNewerVersion(), 'following firmware frame processed');
+    });
     await test('CR-separated channel inventory preserves named MQTT targets', async () => {
         const h = harness();
         const rows = '01,Living,1,\r12,Buero,1,\r13,HWR,1,\r';
-        for (const chunk of ['start_smn' + rows.slice(0, 20), rows.slice(20) + 'ende_smn']) {
+        for (const chunk of ['start_smn' + rows.slice(0, 20), rows.slice(20) + 'ende_smn\r\nstart_sti']) {
             h.bridge.processIncomingData(chunk);
         }
         equal(Object.keys(h.bridge.config.shutter).length, 3, 'all CR-separated channels parsed');
@@ -131,17 +141,17 @@ async function runTests(sources) {
     await test('oversized and malformed frames cannot block valid following frames', async () => {
         const h = harness(); h.bridge.processIncomingData('start_smn' + 'x'.repeat(70000));
         assert(h.bridge.receivedBuffer.length <= 9, 'bounded buffer');
-        h.bridge.processIncomingData('start_smninvalidende_smnstart_smoHEYtech RSende_smo');
+        h.bridge.processIncomingData('start_smninvalidende_smn\r\nstart_stistart_smoHEYtech RSende_smo');
         equal(h.bridge.config.typ, 'RS', 'valid frame after invalid');
         assert(h.logs.some(x => x.includes('Invalid Telnet frame')), 'invalid frame logged');
-        h.bridge.processIncomingData('start_smnincomplete' + 'start_smoHEYtech Nextende_smo');
+        h.bridge.processIncomingData('start_sop incomplete' + 'start_smoHEYtech Nextende_smo');
         equal(h.bridge.config.typ, 'Next', 'resynchronize after incomplete frame');
     });
     await test('valid channel inventory larger than the former 2048-character limit', async () => {
         const h = harness();
         const rows = Array.from({length: 32}, (_, i) => String(i + 1).padStart(2, '0') + ',' + 'Living'.repeat(15) + ',1,\r\n').join('');
         assert(rows.length > 2048, 'fixture exercises former limit');
-        h.bridge.processIncomingData('start_smn' + rows + 'ende_smn');
+        h.bridge.processIncomingData('start_smn' + rows + 'ende_smn\r\nstart_sti');
         equal(Object.keys(h.bridge.config.shutter).length, 32, 'all channels parsed');
     });
     await test('unknown devices and prototype names are rejected', async () => {
@@ -160,7 +170,7 @@ async function runTests(sources) {
         equal(h.writes, ['rsc\r1234\r', '\rsss\rsss\r', 'smo\r', 'sdt\r', 'sfi\r', 'smc\r', 'smn\r', 'skd\r'], 'initial protocol sequence');
     });
     await test('command validation and JSON level values', async () => {
-        const h = harness(); h.bridge.processIncomingData('start_smn01,Living,1,\r\nende_smnstart_sfi8.027oende_sfi');
+        const h = harness(); h.bridge.processIncomingData('start_smn01,Living,1,\r\nende_smn\r\nstart_stistart_sfi8.027oende_sfi');
         await h.advance(10001); const commands = [];
         h.bridge.sendeHandsteuerungsBefehl = async (...args) => commands.push(args);
         await h.bridge.onMessage('shutter.1', 'updown');
@@ -222,7 +232,7 @@ async function runTests(sources) {
     });
     await test('legacy positioning has a finite deadline and requests stop', async () => {
         const h = harness(); h.online();
-        h.bridge.processIncomingData('start_smn01,Living,1,\r\nende_smnstart_sop90,ende_sop');
+        h.bridge.processIncomingData('start_smn01,Living,1,\r\nende_smn\r\nstart_stistart_sop90,ende_sop');
         h.bridge.gotoShutterPosition(1, 50)();
         await h.advance(120600);
         assert(h.writes.some(x => x.includes('\rdown\r')), 'movement');

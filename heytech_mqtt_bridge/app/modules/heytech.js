@@ -281,9 +281,15 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
             }
             this.receivedBuffer = this.receivedBuffer.slice(start.index);
             const endMarker = 'ende_' + start[1];
-            const end = this.receivedBuffer.indexOf(endMarker, start[0].length);
+            // SMN is a streamed inventory. Preserve the original completion boundary:
+            // the controller must have moved on to STI before we commit its channels.
+            const inventoryEnd = start[1] === 'smn'
+                ? /ende_smn\s*start_sti/.exec(this.receivedBuffer) : null;
+            const end = start[1] === 'smn'
+                ? (inventoryEnd ? inventoryEnd.index : -1)
+                : this.receivedBuffer.indexOf(endMarker, start[0].length);
             const next = /start_(smn|sop|skd|smo|smc|sfi)/.exec(this.receivedBuffer.slice(start[0].length));
-            if (next && (end < 0 || start[0].length + next.index < end)) {
+            if (start[1] !== 'smn' && next && (end < 0 || start[0].length + next.index < end)) {
                 this.log.warn('Incomplete Telnet frame discarded');
                 this.receivedBuffer = this.receivedBuffer.slice(start[0].length + next.index);
                 continue;
@@ -296,7 +302,8 @@ class Heytech extends EventEmitter { //extends utils.Adapter {
                 return;
             }
             const frame = this.receivedBuffer.slice(0, end + endMarker.length);
-            this.receivedBuffer = this.receivedBuffer.slice(end + endMarker.length);
+            this.receivedBuffer = this.receivedBuffer.slice(inventoryEnd
+                ? end + inventoryEnd[0].length : end + endMarker.length);
             if (frame.length > 65536) {
                 this.log.warn('Oversized Telnet frame discarded');
                 continue;
